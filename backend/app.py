@@ -10,6 +10,7 @@ from secret_manager import router as secrets_router
 
 init_db()
 
+
 app = FastAPI(title="Secret Manager (Local SQLite)")
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
