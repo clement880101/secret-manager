@@ -80,4 +80,5 @@ jobs:
         with:
           name: cli-binary-${{ matrix.arch }}
           path: cli/dist/
+          retention-days: 30
 

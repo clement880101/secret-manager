@@ -72,7 +72,7 @@ jobs:
       - name: Download CLI artifact
         uses: actions/download-artifact@v4
         with:
-          name: cli-binary
+          name: cli-binary-x86_64
           path: integration-tests/cli-binary
           run-id: ${{ steps.get_cli_run.outputs.run-id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
