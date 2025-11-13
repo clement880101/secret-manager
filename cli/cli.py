@@ -3,7 +3,7 @@ import os
 import time
 import webbrowser
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import typer
 import httpx
@@ -46,6 +46,19 @@ def _resolve_login_url(payload: Dict[str, str]) -> Optional[str]:
     return None
 
 
+def _parse_login_payload(payload: Dict[str, str]) -> Optional[Tuple[str, str]]:
+    token = payload.get("access_token") or payload.get("token")
+    github_id = payload.get("github_id") or payload.get("user_id")
+    if token and github_id:
+        return token, github_id
+
+    nested = payload.get("data")
+    if isinstance(nested, dict):
+        return _parse_login_payload(nested)
+
+    return None
+
+
 def _poll_login(session_id: str, scope: str) -> Dict[str, str]:
     deadline = time.time() + SESSION_TTL_SECONDS
     typer.echo("Waiting for authentication...")
@@ -59,16 +72,16 @@ def _poll_login(session_id: str, scope: str) -> Dict[str, str]:
         )
         if response.status_code == 200:
             data = response.json()
-            token = data.get("access_token") or data.get("token")
-            github_id = data.get("github_id") or data.get("user_id")
-            if not token or not github_id:
+            auth_info = _parse_login_payload(data)
+            if not auth_info:
                 if not pending_notice_shown:
                     typer.echo("Authorization pending. Please finish the login in your browser...")
                     pending_notice_shown = True
                 continue
+            token, github_id = auth_info
             _write_token(token, github_id)
             typer.echo(f"Logged in as {github_id}")
-            return data
+            return {"access_token": token, "github_id": github_id}
         if response.status_code in (401, 403, 404, 410):
             typer.echo("Login session is no longer valid. Please run login again.")
             raise typer.Exit(1)
@@ -114,16 +127,15 @@ def _login_with_access_token(access_token: str) -> Dict[str, str]:
     )
     response.raise_for_status()
     data = response.json()
-
-    token = data.get("access_token") or data.get("token")
-    github_id = data.get("github_id") or data.get("user_id")
-    if not token or not github_id:
+    auth_info = _parse_login_payload(data)
+    if not auth_info:
         typer.echo("Login test response missing required fields.")
         raise typer.Exit(1)
+    token, github_id = auth_info
 
     _write_token(token, github_id)
     typer.echo(f"Logged in as {github_id}")
-    return data
+    return {"access_token": token, "github_id": github_id}
 
 
 def _ensure_token(scope: str = DEFAULT_SCOPE) -> Dict[str, str]:

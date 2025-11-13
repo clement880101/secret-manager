@@ -50,7 +50,8 @@ def callback(code: str, state: str):
 @router.post("/login-test")
 def login_test(payload: schemas.LoginTestRequest):
     try:
-        return service.login_with_personal_token(payload.token)
+        token = service.login_with_personal_token(payload.token)
+        return {"status": "ready", "token": token["access_token"], "user_id": token["user"]["id"]}
     except HTTPException:
         raise
     except Exception as exc:

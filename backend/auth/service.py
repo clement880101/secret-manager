@@ -265,6 +265,7 @@ def complete_session(session_id: str, token_payload: Dict[str, Any], user: Dict[
     if session is None:
         raise HTTPException(404, "Login session not found or expired")
     get_or_create_user(user["id"])
+    session["user_id"] = user["id"]
     session["status"] = "ready"
     session["completed_at"] = time.time()
     session["token"] = {
@@ -284,8 +285,16 @@ def get_session_status(session_id: str) -> Dict[str, Any]:
     status = session.get("status", "pending")
     if status == "ready":
         token = session.get("token")
+        user_id = session.get("user_id")
+        if user_id is None and token and isinstance(token, dict):
+            user = token.get("user")
+            if isinstance(user, dict):
+                user_id = user.get("id")
         SESSION_STORE.pop(session_id, None)
-        return {"status": "ready", "token": token}
+        response = {"status": "ready", "token": token}
+        if user_id is not None:
+            response["user_id"] = user_id
+        return response
     if status == "error":
         message = session.get("error_message") or "Login failed"
         SESSION_STORE.pop(session_id, None)

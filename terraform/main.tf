@@ -144,7 +144,7 @@ resource "aws_ecs_task_definition" "api" {
         },
         {
           name  = "BACKEND_URL"
-          value = "http://54.193.43.97"
+          value = "http://54.193.43.97:8000"
         }
       ]
       portMappings = [
