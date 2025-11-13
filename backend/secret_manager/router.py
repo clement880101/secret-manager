@@ -26,7 +26,6 @@ def list_secrets(request: Request):
     user_id = current_user_id(request)
     return {"items": service.list_visible(user_id)}
 
-
 @router.get("/{key}")
 def get_secret(request: Request, key: str):
     user_id = current_user_id(request)
