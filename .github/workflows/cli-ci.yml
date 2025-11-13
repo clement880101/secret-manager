@@ -42,8 +42,15 @@ jobs:
         run: pytest
 
   build:
-    name: Build CLI Binary
-    runs-on: ubuntu-latest
+    name: Build CLI Binary (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     env:
       BACKEND_URL: ${{ vars.BACKEND_URL }}
     needs: test
@@ -71,6 +78,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cli-binary
+          name: cli-binary-${{ matrix.arch }}
           path: cli/dist/
 

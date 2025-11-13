@@ -23,3 +23,8 @@ output "secret_arn" {
   value       = aws_secretsmanager_secret.app.arn
 }
 
+output "load_balancer_ip" {
+  description = "Static public IP address of the Network Load Balancer."
+  value       = aws_eip.lb.public_ip
+}
+

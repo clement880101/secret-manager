@@ -24,6 +24,10 @@ data "aws_subnets" "default" {
   }
 }
 
+locals {
+  primary_subnet_id = element(data.aws_subnets.default.ids, 0)
+}
+
 resource "aws_ecr_repository" "api" {
   name         = "secretmgr-api"
   force_delete = true
@@ -77,6 +81,25 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "ecs_execution_secret_access" {
+  name = "secretmgr-execution-secret-access"
+  role = aws_iam_role.ecs_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = aws_secretsmanager_secret.app.arn
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "secret_access" {
   name = "secretmgr-secret-access"
   role = aws_iam_role.ecs_task.id
@@ -108,7 +131,7 @@ resource "aws_security_group" "api" {
     from_port   = 8000
     to_port     = 8000
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 
   egress {
@@ -116,6 +139,39 @@ resource "aws_security_group" "api" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_eip" "lb" {
+  domain = "vpc"
+}
+
+resource "aws_lb" "api" {
+  name               = "secretmgr-nlb"
+  load_balancer_type = "network"
+
+  subnet_mapping {
+    subnet_id     = local.primary_subnet_id
+    allocation_id = aws_eip.lb.allocation_id
+  }
+}
+
+resource "aws_lb_target_group" "api" {
+  name        = "secretmgr-tg"
+  port        = 8000
+  protocol    = "TCP"
+  target_type = "ip"
+  vpc_id      = data.aws_vpc.default.id
+}
+
+resource "aws_lb_listener" "api" {
+  load_balancer_arn = aws_lb.api.arn
+  port              = 8000
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
   }
 }
 
@@ -144,7 +200,7 @@ resource "aws_ecs_task_definition" "api" {
         },
         {
           name  = "BACKEND_URL"
-          value = "http://54.193.43.97:8000"
+          value = "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000/"
         }
       ]
       portMappings = [
@@ -178,9 +234,16 @@ resource "aws_ecs_service" "api" {
   task_definition = aws_ecs_task_definition.api.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+  depends_on      = [aws_lb_listener.api]
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api.arn
+    container_name   = "api"
+    container_port   = 8000
+  }
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
+    subnets          = [local.primary_subnet_id]
     security_groups  = [aws_security_group.api.id]
     assign_public_ip = true
   }
