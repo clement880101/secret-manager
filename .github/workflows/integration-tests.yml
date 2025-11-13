@@ -80,14 +80,6 @@ jobs:
       - name: List CLI binary
         run: ls -al .
 
-      - name: Extract CLI binary
-        run: |
-          unzip -jo cli-binary/*.zip -d ..
-          chmod +x ../cli
-
-      - name: List CLI binary 2
-        run: ls -al .
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
