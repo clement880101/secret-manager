@@ -79,7 +79,24 @@ jobs:
 
       - name: Extract CLI binary
         run: |
-          find cli-binary -name "*.zip" -print -exec unzip -o {} -d cli-binary \;
+          shopt -s nullglob
+          ZIP_FILES=(cli-binary/*.zip)
+          if [ ${#ZIP_FILES[@]} -gt 0 ]; then
+            for archive in "${ZIP_FILES[@]}"; do
+              unzip -o "$archive" -d .
+            done
+          else
+            cp -a cli-binary/. .
+          fi
+          if [ ! -f cli ]; then
+            CLI_PATH=$(find cli-binary -type f \( -name "cli" -o -name "cli.exe" \) | head -n 1)
+            if [ -z "$CLI_PATH" ]; then
+              echo "CLI binary not found after extraction" >&2
+              exit 1
+            fi
+            cp "$CLI_PATH" cli
+          fi
+          chmod +x cli
 
       - name: Install dependencies
         run: |
