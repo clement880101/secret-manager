@@ -1,0 +1,19 @@
+{
+  "name": "secret-manager-cli",
+  "dockerComposeFile": [
+    "../docker-compose.yml"
+  ],
+  "service": "cli",
+  "workspaceFolder": "/workspace/cli",
+  "postCreateCommand": "pip install --no-cache-dir -r /workspace/cli/requirements.txt",
+  "shutdownAction": "stopCompose",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  }
+}
+

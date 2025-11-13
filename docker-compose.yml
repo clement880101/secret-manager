@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["sleep", "infinity"]
+    environment:
+      - PYTHONPATH=/workspace/backend
+      - DB_URL=sqlite:///./secrets.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/workspace
+      - backend_home:/root
+    working_dir: /workspace/backend
+
+  cli:
+    image: mcr.microsoft.com/devcontainers/python:3.12
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://localhost:8000
+    volumes:
+      - .:/workspace
+      - cli_home:/root
+    working_dir: /workspace/cli
+    command: ["sleep", "infinity"]
+    tty: true
+    stdin_open: true
+
+volumes:
+  backend_home:
+  cli_home:

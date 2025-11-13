@@ -1,0 +1,21 @@
+{
+  "name": "Secret Manager Backend",
+  "dockerComposeFile": [
+    "../docker-compose.yml"
+  ],
+  "service": "backend",
+  "workspaceFolder": "/workspace/backend",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [8000],
+  "overrideCommand": false,
+  "postCreateCommand": "pip install --no-cache-dir -r requirements-dev.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  }
+}
+

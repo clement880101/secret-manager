@@ -1,0 +1,136 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - backend/**
+      - .github/workflows/backend-ci.yml
+  pull_request:
+    paths:
+      - backend/**
+      - .github/workflows/backend-ci.yml
+  workflow_dispatch:
+
+env:
+  OAUTH_ID_GITHUB: ${{ vars.OAUTH_ID_GITHUB }}
+  OAUTH_SECRET_GITHUB: ${{ secrets.OAUTH_SECRET_GITHUB }}
+  BACKEND_URL: ${{ vars.BACKEND_URL }}
+
+jobs:
+  test:
+    name: Run Backend Tests
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git \
+            build-essential \
+            libffi-dev \
+            libssl-dev \
+            sqlite3
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest
+
+  build-and-deploy:
+    name: Build and Deploy Backend
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECR_REPOSITORY: secretmgr-api
+      IMAGE_TAG: ${{ github.sha }}
+      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          echo "account_id=${ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
+          echo "registry=${ECR_REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg OAUTH_ID_GITHUB="${OAUTH_ID_GITHUB}" \
+            --build-arg OAUTH_SECRET_GITHUB="${OAUTH_SECRET_GITHUB}" \
+            --build-arg BACKEND_URL="${BACKEND_URL}" \
+            -t "${{ steps.login-ecr.outputs.image_uri }}" backend
+
+      - name: Push Docker image
+        run: |
+          docker push "${{ steps.login-ecr.outputs.image_uri }}"
+
+      - name: Deploy to EC2 instance via SSM
+        env:
+          IMAGE_URI: ${{ steps.login-ecr.outputs.image_uri }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          cat > rendered-commands.json <<EOF
+          {
+            "commands": [
+              "aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY}",
+              "sudo docker pull ${IMAGE_URI}",
+              "sudo docker stop secretmgr-api || true",
+              "sudo docker rm secretmgr-api || true",
+              "sudo docker run -d --name secretmgr-api -p 8000:8000 --restart unless-stopped -e OAUTH_ID_GITHUB=${OAUTH_ID_GITHUB} -e OAUTH_SECRET_GITHUB=${OAUTH_SECRET_GITHUB} -e BACKEND_URL=${BACKEND_URL} ${IMAGE_URI}"
+            ]
+          }
+          EOF
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${EC2_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy secret manager backend" \
+            --parameters file://rendered-commands.json \
+            --timeout-seconds 600 \
+            --region "${AWS_REGION}" \
+            --query "Command.CommandId" \
+            --output text)
+
+          aws ssm wait command-executed \
+            --region "${AWS_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${EC2_INSTANCE_ID}"
+
+          aws ssm get-command-invocation \
+            --region "${AWS_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${EC2_INSTANCE_ID}"
+
