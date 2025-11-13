@@ -59,7 +59,9 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       ECR_REPOSITORY: secretmgr-api
       IMAGE_TAG: ${{ github.sha }}
-      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+      ECS_CLUSTER_ARN: arn:aws:ecs:us-west-1:003816847681:cluster/secretmgr-cluster
+      ECS_SERVICE_NAME: secretmgr-api
+      ECS_TASK_DEFINITION_ARN: arn:aws:ecs:us-west-1:003816847681:task-definition/secretmgr-api:1
 
     steps:
       - name: Checkout repository
@@ -97,40 +99,55 @@ jobs:
         run: |
           docker push "${{ steps.login-ecr.outputs.image_uri }}"
 
-      - name: Deploy to EC2 instance via SSM
+      - name: Deploy to Amazon ECS
         env:
           IMAGE_URI: ${{ steps.login-ecr.outputs.image_uri }}
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          cat > rendered-commands.json <<EOF
-          {
-            "commands": [
-              "aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY}",
-              "sudo docker pull ${IMAGE_URI}",
-              "sudo docker stop secretmgr-api || true",
-              "sudo docker rm secretmgr-api || true",
-              "sudo docker run -d --name secretmgr-api -p 8000:8000 --restart unless-stopped -e OAUTH_ID_GITHUB=${OAUTH_ID_GITHUB} -e OAUTH_SECRET_GITHUB=${OAUTH_SECRET_GITHUB} -e BACKEND_URL=${BACKEND_URL} ${IMAGE_URI}"
-            ]
-          }
-          EOF
+          TASK_DEFINITION=$(aws ecs describe-task-definition \
+            --task-definition "${ECS_TASK_DEFINITION_ARN}" \
+            --region "${AWS_REGION}")
 
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "${EC2_INSTANCE_ID}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy secret manager backend" \
-            --parameters file://rendered-commands.json \
-            --timeout-seconds 600 \
-            --region "${AWS_REGION}" \
-            --query "Command.CommandId" \
-            --output text)
+          UPDATED_TASK_DEFINITION=$(echo "${TASK_DEFINITION}" | jq --arg IMAGE_URI "${IMAGE_URI}" '
+            .taskDefinition
+            | {
+                family,
+                taskRoleArn,
+                executionRoleArn,
+                networkMode,
+                containerDefinitions,
+                volumes,
+                placementConstraints,
+                requiresCompatibilities,
+                cpu,
+                memory,
+                pidMode,
+                ipcMode,
+                proxyConfiguration,
+                inferenceAccelerators,
+                ephemeralStorage
+              }
+            | .containerDefinitions |= map(.image = $IMAGE_URI)
+            | with_entries(select(.value != null and (.value | tostring) != "[]"))
+          ')
 
-          aws ssm wait command-executed \
-            --region "${AWS_REGION}" \
-            --command-id "${COMMAND_ID}" \
-            --instance-id "${EC2_INSTANCE_ID}"
+          echo "${UPDATED_TASK_DEFINITION}" > rendered-task-def.json
 
-          aws ssm get-command-invocation \
-            --region "${AWS_REGION}" \
-            --command-id "${COMMAND_ID}" \
-            --instance-id "${EC2_INSTANCE_ID}"
+          REGISTER_OUTPUT=$(aws ecs register-task-definition \
+            --cli-input-json file://rendered-task-def.json \
+            --region "${AWS_REGION}")
+
+          NEW_TASK_DEFINITION_ARN=$(echo "${REGISTER_OUTPUT}" | jq -r '.taskDefinition.taskDefinitionArn')
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER_ARN}" \
+            --service "${ECS_SERVICE_NAME}" \
+            --task-definition "${NEW_TASK_DEFINITION_ARN}" \
+            --force-new-deployment \
+            --region "${AWS_REGION}"
+
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER_ARN}" \
+            --services "${ECS_SERVICE_NAME}" \
+            --region "${AWS_REGION}"
 

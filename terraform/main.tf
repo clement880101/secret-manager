@@ -24,26 +24,6 @@ data "aws_subnets" "default" {
   }
 }
 
-data "aws_ami" "al2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-202*-x86_64"]
-  }
-
-  filter {
-    name   = "architecture"
-    values = ["x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
 resource "aws_ecr_repository" "api" {
   name         = "secretmgr-api"
   force_delete = true
@@ -58,8 +38,8 @@ resource "aws_secretsmanager_secret" "app" {
   recovery_window_in_days = 0
 }
 
-resource "aws_iam_role" "ec2" {
-  name = "secretmgr-ec2-role"
+resource "aws_iam_role" "ecs_task_execution" {
+  name = "secretmgr-ecs-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -68,26 +48,38 @@ resource "aws_iam_role" "ec2" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Service = "ec2.amazonaws.com"
+          Service = "ecs-tasks.amazonaws.com"
         }
       }
     ]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ssm" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+resource "aws_iam_role" "ecs_task" {
+  name = "secretmgr-ecs-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
 }
 
-resource "aws_iam_role_policy_attachment" "ecr" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
+  role       = aws_iam_role.ecs_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy" "secret_access" {
   name = "secretmgr-secret-access"
-  role = aws_iam_role.ec2.id
+  role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -101,9 +93,9 @@ resource "aws_iam_role_policy" "secret_access" {
   })
 }
 
-resource "aws_iam_instance_profile" "ec2" {
-  name = "secretmgr-instance-profile"
-  role = aws_iam_role.ec2.name
+resource "aws_cloudwatch_log_group" "api" {
+  name              = "/ecs/secretmgr-api"
+  retention_in_days = 7
 }
 
 resource "aws_security_group" "api" {
@@ -127,28 +119,54 @@ resource "aws_security_group" "api" {
   }
 }
 
-locals {
-  user_data = <<-EOT
-    #!/bin/bash
-    set -xe
-    dnf update -y
-    dnf install -y docker
-    systemctl enable docker
-    systemctl start docker
-  EOT
+resource "aws_ecs_cluster" "main" {
+  name = "secretmgr-cluster"
 }
 
-resource "aws_instance" "api" {
-  ami                    = data.aws_ami.al2023.id
-  instance_type          = "t3.micro"
-  subnet_id              = data.aws_subnets.default.ids[0]
-  vpc_security_group_ids = [aws_security_group.api.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2.name
-  user_data              = local.user_data
-  associate_public_ip_address = true
+resource "aws_ecs_task_definition" "api" {
+  family                   = "secretmgr-api"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
 
-  tags = {
-    Name = "secretmgr-instance"
+  container_definitions = jsonencode([
+    {
+      name      = "api"
+      image     = "${aws_ecr_repository.api.repository_url}:latest"
+      essential = true
+      portMappings = [
+        {
+          containerPort = 8000
+          hostPort      = 8000
+          protocol      = "tcp"
+        }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.api.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_ecs_service" "api" {
+  name            = "secretmgr-api"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.api.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.api.id]
+    assign_public_ip = true
   }
 }
 

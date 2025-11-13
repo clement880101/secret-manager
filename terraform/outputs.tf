@@ -1,11 +1,16 @@
-output "instance_id" {
-  description = "ID of the EC2 instance running the API."
-  value       = aws_instance.api.id
+output "ecs_cluster_arn" {
+  description = "ARN of the ECS cluster running the API."
+  value       = aws_ecs_cluster.main.arn
 }
 
-output "public_ip" {
-  description = "Public IP address of the EC2 instance."
-  value       = aws_instance.api.public_ip
+output "ecs_service_name" {
+  description = "Name of the ECS service running the API."
+  value       = aws_ecs_service.api.name
+}
+
+output "ecs_task_definition_arn" {
+  description = "ARN of the ECS task definition for the API."
+  value       = aws_ecs_task_definition.api.arn
 }
 
 output "ecr_repo_url" {
