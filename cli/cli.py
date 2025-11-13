@@ -19,12 +19,17 @@ API_URL = os.environ.get("BACKEND_URL", "http://secretmgr-nlb-750c1ac03b1b7c1f.e
 DEFAULT_SCOPE = "read:user user:email"
 SESSION_TTL_SECONDS = 600
 POLL_INTERVAL_SECONDS = 3.0
-TOKEN_FILE = Path(".token")
+_TOKEN_FILE_ENV = os.environ.get("SECRET_MANAGER_TOKEN_FILE")
+if _TOKEN_FILE_ENV:
+    TOKEN_FILE = Path(_TOKEN_FILE_ENV).expanduser()
+else:
+    TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
 
 
 def _write_token(token: str, github_id: str) -> None:
     payload = {"access_token": token, "github_id": github_id, "created_at": int(time.time())}
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     TOKEN_FILE.write_text(json.dumps(payload, indent=2))
 
 
