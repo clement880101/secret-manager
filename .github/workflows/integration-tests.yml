@@ -97,6 +97,9 @@ jobs:
             cp "$CLI_PATH" cli
           fi
           chmod +x cli
+          
+      - name: ls
+        run: ls -al cli-binary
 
       - name: Install dependencies
         run: |
