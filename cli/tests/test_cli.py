@@ -1,4 +1,6 @@
+import importlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -76,4 +78,25 @@ def test_logout_removes_token_file(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "Logging out octocat" in result.stdout
     assert not token_file.exists()
+
+
+def test_loads_dotenv_if_present(monkeypatch, tmp_path):
+    for key in ("BACKEND_URL", "SECRETS_HTTP_TIMEOUT"):
+        monkeypatch.delenv(key, raising=False)
+
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text("BACKEND_URL=https://dotenv.example\nSECRETS_HTTP_TIMEOUT=2.5\n")
+
+    original_cwd = Path.cwd()
+    monkeypatch.chdir(tmp_path)
+
+    importlib.reload(cli)
+
+    assert cli.API_URL == "https://dotenv.example"
+    assert cli.HTTP_TIMEOUT == 2.5
+
+    monkeypatch.delenv("BACKEND_URL", raising=False)
+    monkeypatch.delenv("SECRETS_HTTP_TIMEOUT", raising=False)
+    os.chdir(original_cwd)
+    importlib.reload(cli)
 

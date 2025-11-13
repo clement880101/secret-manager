@@ -5,12 +5,17 @@ import webbrowser
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-import typer
 import httpx
+import typer
+from dotenv import load_dotenv
+
+DOTENV_PATH = Path(".env")
+if DOTENV_PATH.exists():
+    load_dotenv(DOTENV_PATH)
 
 app = typer.Typer(add_completion=False)
 
-API_URL = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+API_URL = os.environ.get("BACKEND_URL", "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000").rstrip("/")
 DEFAULT_SCOPE = "read:user user:email"
 SESSION_TTL_SECONDS = 600
 POLL_INTERVAL_SECONDS = 3.0
@@ -65,11 +70,15 @@ def _poll_login(session_id: str, scope: str) -> Dict[str, str]:
     pending_notice_shown = False
     while time.time() < deadline:
         time.sleep(POLL_INTERVAL_SECONDS)
-        response = httpx.get(
-            f"{API_URL}/auth/login/{session_id}",
-            params={"scope": scope},
-            timeout=HTTP_TIMEOUT,
-        )
+        try:
+            response = httpx.get(
+                f"{API_URL}/auth/login/{session_id}",
+                params={"scope": scope},
+                timeout=HTTP_TIMEOUT,
+            )
+        except httpx.RequestError as exc:
+            typer.echo(f"Unable to reach API at {API_URL}: {exc}")
+            raise typer.Exit(1)
         if response.status_code == 200:
             data = response.json()
             auth_info = _parse_login_payload(data)
@@ -90,12 +99,17 @@ def _poll_login(session_id: str, scope: str) -> Dict[str, str]:
 
 
 def _start_login(scope: str) -> Dict[str, str]:
-    typer.echo(f"Starting login (scope: {scope})")
-    response = httpx.post(
-        f"{API_URL}/auth/login",
-        params={"scope": scope},
-        timeout=HTTP_TIMEOUT,
-    )
+    typer.echo(f"Starting login")
+    try:
+        response = httpx.post(
+            f"{API_URL}/auth/login",
+            params={"scope": scope},
+            timeout=HTTP_TIMEOUT,
+        )
+    except httpx.RequestError as exc:
+        typer.echo(f"Unable to reach API at {API_URL}: {exc}")
+        typer.echo("Ensure the backend is running or set BACKEND_URL to a reachable server.")
+        raise typer.Exit(1)
     response.raise_for_status()
     payload = response.json()
     session_id = payload.get("session_id")
@@ -120,11 +134,16 @@ def _login_with_access_token(access_token: str) -> Dict[str, str]:
         raise typer.Exit(1)
 
     typer.echo("Logging in with GH_ACCESS_TOKEN...")
-    response = httpx.post(
-        f"{API_URL}/auth/login-test",
-        json={"token": access_token},
-        timeout=HTTP_TIMEOUT,
-    )
+    try:
+        response = httpx.post(
+            f"{API_URL}/auth/login-test",
+            json={"token": access_token},
+            timeout=HTTP_TIMEOUT,
+        )
+    except httpx.RequestError as exc:
+        typer.echo(f"Unable to reach API at {API_URL}: {exc}")
+        typer.echo("Ensure the backend is running or set BACKEND_URL to a reachable server.")
+        raise typer.Exit(1)
     response.raise_for_status()
     data = response.json()
     auth_info = _parse_login_payload(data)

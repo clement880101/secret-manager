@@ -136,6 +136,7 @@ def exchange_code_for_token(code: str, state: str) -> Tuple[str, Dict[str, Any]]
     if session is None:
         raise HTTPException(400, "Login session not found or expired")
     config = _get_github_config()
+    print(config)
     data = {
         "client_id": config["client_id"],
         "client_secret": config["client_secret"],

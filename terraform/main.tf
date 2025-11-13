@@ -200,7 +200,7 @@ resource "aws_ecs_task_definition" "api" {
         },
         {
           name  = "BACKEND_URL"
-          value = "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000/"
+          value = "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000"
         }
       ]
       portMappings = [

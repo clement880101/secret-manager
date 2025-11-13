@@ -5,9 +5,9 @@ coverage.xml
 .coverage
 coverage.xml
 htmlcov/
+.env
 
-cli-x86
-cli-arm64
+cli
 
 __pycache__/
 *.py[cod]
