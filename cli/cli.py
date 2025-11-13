@@ -100,10 +100,39 @@ def _start_login(scope: str) -> Dict[str, str]:
     return _poll_login(session_id, scope)
 
 
+def _login_with_access_token(access_token: str) -> Dict[str, str]:
+    access_token = access_token.strip()
+    if not access_token:
+        typer.echo("GH_ACCESS_TOKEN is set but empty.")
+        raise typer.Exit(1)
+
+    typer.echo("Logging in with GH_ACCESS_TOKEN...")
+    response = httpx.post(
+        f"{API_URL}/auth/login-test",
+        json={"token": access_token},
+        timeout=HTTP_TIMEOUT,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    token = data.get("access_token") or data.get("token")
+    github_id = data.get("github_id") or data.get("user_id")
+    if not token or not github_id:
+        typer.echo("Login test response missing required fields.")
+        raise typer.Exit(1)
+
+    _write_token(token, github_id)
+    typer.echo(f"Logged in as {github_id}")
+    return data
+
+
 def _ensure_token(scope: str = DEFAULT_SCOPE) -> Dict[str, str]:
     token_data = _load_token()
     if token_data:
         return token_data
+    gh_access_token = os.environ.get("GH_ACCESS_TOKEN")
+    if gh_access_token:
+        return _login_with_access_token(gh_access_token)
     typer.echo("You are not logged in. Starting login flow...")
     return _start_login(scope)
 
@@ -136,6 +165,10 @@ def login(scope: str = typer.Option(DEFAULT_SCOPE, help="GitHub OAuth scopes to 
     if TOKEN_FILE.exists():
         typer.echo("Existing session detected; starting fresh login.")
         TOKEN_FILE.unlink()
+    gh_access_token = os.environ.get("GH_ACCESS_TOKEN")
+    if gh_access_token:
+        _login_with_access_token(gh_access_token)
+        return
     _start_login(scope)
 
 

@@ -137,6 +137,16 @@ resource "aws_ecs_task_definition" "api" {
       name      = "api"
       image     = "${aws_ecr_repository.api.repository_url}:latest"
       essential = true
+      environment = [
+        {
+          name  = "OAUTH_ID_GITHUB"
+          value = "Ov23liZnlg8w1GWaceQE"
+        },
+        {
+          name  = "BACKEND_URL"
+          value = "http://54.193.43.97"
+        }
+      ]
       portMappings = [
         {
           containerPort = 8000
@@ -152,6 +162,12 @@ resource "aws_ecs_task_definition" "api" {
           awslogs-stream-prefix = "ecs"
         }
       }
+      secrets = [
+        {
+          name      = "OAUTH_SECRET_GITHUB"
+          valueFrom = aws_secretsmanager_secret.app.arn
+        }
+      ]
     }
   ])
 }
