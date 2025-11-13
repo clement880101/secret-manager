@@ -234,15 +234,20 @@ def test_rbac_enforcement(cli_context: CLIContext):
         assert user2_id in share_result.stdout
         cli_context.logout()
 
-        # user2 can now read but not write
+        # user2 can now read but cannot manage the secret
         cli_context.login("user2")
         list_post_share = _run_cli(cli_context.env, "list")
         _ensure_success(list_post_share)
         assert secret_key in list_post_share.stdout
+        share_attempt = _run_cli(cli_context.env, "share", secret_key, "pytest-third-user")
+        assert share_attempt.returncode != 0
+        cli_context.logout()
 
-        write_attempt = _run_cli(cli_context.env, "create", secret_key, "updated-value")
-        assert write_attempt.returncode != 0
-        assert "403" in write_attempt.stderr or "Forbidden" in write_attempt.stderr or "permission" in write_attempt.stderr.lower()
+        # secret remains owned by user1
+        cli_context.login("user1")
+        verify_result = _run_cli(cli_context.env, "list")
+        _ensure_success(verify_result)
+        assert secret_key in verify_result.stdout
         cli_context.logout()
 
     finally:
