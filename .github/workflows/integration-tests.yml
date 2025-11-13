@@ -24,6 +24,9 @@ jobs:
   run-integration-tests:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    env:
+      GH_ACCESS_TOKEN_1: ${{ secrets.GH_ACCESS_TOKEN_1 }}
+      GH_ACCESS_TOKEN_2: ${{ secrets.GH_ACCESS_TOKEN_2 }}
     defaults:
       run:
         working-directory: integration-tests
