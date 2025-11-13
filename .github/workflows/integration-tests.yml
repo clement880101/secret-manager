@@ -73,18 +73,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cli-binary-x86_64
-          path: integration-tests/cli-binary
+          path: integration-tests/
           run-id: ${{ steps.get_cli_run.outputs.run-id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List CLI binary
+        run: ls -al .
 
       - name: Extract CLI binary
         run: |
           unzip -jo cli-binary/*.zip -d ..
           chmod +x ../cli
 
-      - name: List CLI binary
+      - name: List CLI binary 2
         run: ls -al .
-        
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
