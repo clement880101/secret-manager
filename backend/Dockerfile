@@ -28,7 +28,7 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "debug"]
 
 # uvicorn app:app --host 0.0.0.0 --port 8000
 # uvicorn app:app --host 0.0.0.0 --port 8000 --reload --log-level debug
