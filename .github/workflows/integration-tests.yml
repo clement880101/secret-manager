@@ -79,7 +79,7 @@ jobs:
 
       - name: Extract CLI binary
         run: |
-          find integration-tests/cli-binary -name "*.zip" -print -exec unzip -o {} -d integration-tests/cli-binary \;
+          find integration-tests/cli-binary-x86_64 -name "*.zip" -print -exec unzip -o {} -d integration-tests/cli-binary \;
 
       - name: Install dependencies
         run: |
