@@ -80,10 +80,12 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          LATEST_IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
 
           echo "account_id=${ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
           echo "registry=${ECR_REGISTRY}" >> "$GITHUB_OUTPUT"
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "latest_image_uri=${LATEST_IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
           aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
@@ -93,11 +95,14 @@ jobs:
             --build-arg OAUTH_ID_GITHUB="${OAUTH_ID_GITHUB}" \
             --build-arg OAUTH_SECRET_GITHUB="${OAUTH_SECRET_GITHUB}" \
             --build-arg BACKEND_URL="${BACKEND_URL}" \
-            -t "${{ steps.login-ecr.outputs.image_uri }}" backend
+            -t "${{ steps.login-ecr.outputs.image_uri }}" \
+            -t "${{ steps.login-ecr.outputs.latest_image_uri }}" \
+            backend
 
       - name: Push Docker image
         run: |
           docker push "${{ steps.login-ecr.outputs.image_uri }}"
+          docker push "${{ steps.login-ecr.outputs.latest_image_uri }}"
 
       - name: Deploy to Amazon ECS
         env:
