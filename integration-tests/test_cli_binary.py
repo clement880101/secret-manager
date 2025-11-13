@@ -183,7 +183,7 @@ def test_share_secret(ensure_user1, ensure_user2):
 
         share_result = _run_cli(context_user1.env, "share", secret_key, share_target)
         _ensure_success(share_result)
-        assert f"Granted write access to `{secret_key}`" in share_result.stdout
+        assert f"Granted access to `{secret_key}`" in share_result.stdout
         assert share_target in share_result.stdout
     finally:
         delete_result = _run_cli(context_user1.env, "delete", secret_key)
@@ -228,9 +228,10 @@ def test_rbac_enforcement(cli_context: CLIContext):
             "share",
             secret_key,
             user2_id,
-            "--no-can-write",
         )
         _ensure_success(share_result)
+        assert f"Granted access to `{secret_key}`" in share_result.stdout
+        assert user2_id in share_result.stdout
         cli_context.logout()
 
         # user2 can now read but not write
