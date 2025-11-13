@@ -77,8 +77,9 @@ jobs:
           run-id: ${{ steps.get_cli_run.outputs.run-id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: List CLI binary
-        run: ls -al .
+      - name: Chmod CLI binary
+        run: |
+          chmod +x cli
 
       - name: Install dependencies
         run: |
