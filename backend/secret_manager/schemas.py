@@ -8,5 +8,4 @@ class SecretIn(BaseModel):
 
 class ShareIn(BaseModel):
     github_id: str
-    can_write: bool = True
 

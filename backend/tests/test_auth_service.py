@@ -1,5 +1,11 @@
+import importlib
+import sys
+import urllib.parse
+from pathlib import Path
+
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 
 def test_parse_token_fetches_remote_user(monkeypatch, auth_service_module):
@@ -131,5 +137,64 @@ def test_fetch_github_user_keeps_bearer_for_oauth(monkeypatch, auth_service_modu
 
     assert calls == ["Bearer oauth-example"]
     assert user["login"] == "oauth-user"
+
+
+def _build_auth_test_client(monkeypatch):
+    monkeypatch.setenv("DB_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("OAUTH_ID_GITHUB", "client-id-123")
+    monkeypatch.setenv("OAUTH_SECRET_GITHUB", "super-secret")
+    monkeypatch.setenv("BACKEND_URL", "https://backend.example.com")
+
+    project_root = Path(__file__).resolve().parent.parent
+    project_root_str = str(project_root)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+    modules_to_clear = [
+        "secret_manager.router",
+        "secret_manager.models",
+        "auth.router",
+        "auth.service",
+        "auth.models",
+        "database",
+    ]
+    for name in modules_to_clear:
+        sys.modules.pop(name, None)
+
+    database = importlib.import_module("database")
+    auth_router = importlib.import_module("auth.router")
+
+    database.init_db()
+
+    app = FastAPI()
+    app.include_router(auth_router.router)
+    return TestClient(app)
+
+
+@pytest.fixture()
+def auth_test_client(monkeypatch):
+    return _build_auth_test_client(monkeypatch)
+
+
+def test_login_route_returns_auth_link(auth_test_client):
+    response = auth_test_client.post("/auth/login", params={"scope": "read:org"})
+
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert "session_id" in payload and payload["session_id"]
+    assert "auth_url" in payload and payload["auth_url"]
+
+    parsed = urllib.parse.urlparse(payload["auth_url"])
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "github.com"
+    assert parsed.path == "/login/oauth/authorize"
+
+    query = urllib.parse.parse_qs(parsed.query)
+    assert query["client_id"] == ["client-id-123"]
+    assert query["redirect_uri"] == ["https://backend.example.com/auth/callback"]
+    assert query["scope"] == ["read:org"]
+    assert query["allow_signup"] == ["false"]
+    assert query["state"][0]
 
 

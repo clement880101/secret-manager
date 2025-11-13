@@ -80,15 +80,14 @@ def test_share_secret_is_idempotent_and_creates_user(service_modules):
     User = service_modules["User"]
 
     service.put_secret("owner", "key", "value")
-    service.share_secret("owner", "key", "target", can_write=False)
-    service.share_secret("owner", "key", "target", can_write=True)
+    service.share_secret("owner", "key", "target")
+    service.share_secret("owner", "key", "target")
 
     with database.session_scope() as session:
         shares = session.scalars(select(Share)).all()
         assert len(shares) == 1
         share = shares[0]
         assert share.user.github_id == "target"
-        assert share.can_write is False
         assert session.get(User, "target") is not None
 
 

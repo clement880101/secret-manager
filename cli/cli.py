@@ -19,7 +19,7 @@ API_URL = os.environ.get("BACKEND_URL", "http://secretmgr-nlb-750c1ac03b1b7c1f.e
 DEFAULT_SCOPE = "read:user user:email"
 SESSION_TTL_SECONDS = 600
 POLL_INTERVAL_SECONDS = 3.0
-TOKEN_FILE = Path.home() / ".token"
+TOKEN_FILE = Path(".token")
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
 
 
@@ -161,11 +161,8 @@ def _ensure_token(scope: str = DEFAULT_SCOPE) -> Dict[str, str]:
     token_data = _load_token()
     if token_data:
         return token_data
-    gh_access_token = os.environ.get("GH_ACCESS_TOKEN")
-    if gh_access_token:
-        return _login_with_access_token(gh_access_token)
-    typer.echo("You are not logged in. Starting login flow...")
-    return _start_login(scope)
+    typer.echo("Not logged in. Run `cli login` to authenticate.")
+    raise typer.Exit(1)
 
 
 def _request_with_auth(method: str, path: str, scope: str = DEFAULT_SCOPE, **kwargs) -> httpx.Response:
@@ -178,13 +175,10 @@ def _request_with_auth(method: str, path: str, scope: str = DEFAULT_SCOPE, **kwa
     kwargs.setdefault("timeout", HTTP_TIMEOUT)
     response = httpx.request(method, url, **kwargs)
     if response.status_code == 401:
-        typer.echo("Session expired or invalid. Re-authenticating...")
+        typer.echo("Session expired or invalid. Run `cli login` to authenticate again.")
         if TOKEN_FILE.exists():
             TOKEN_FILE.unlink()
-        token_data = _start_login(scope)
-        headers.update(_auth_headers(token_data["access_token"]))
-        kwargs["headers"] = headers
-        response = httpx.request(method, url, **kwargs)
+        raise typer.Exit(1)
     return response
 
 
@@ -225,6 +219,9 @@ def create_secret(key: str, value: str):
     if response.status_code == 200:
         typer.echo(f"Stored secret `{key}`.")
         return
+    if response.status_code == 409:
+        typer.echo(f"Secret `{key}` already exists.")
+        raise typer.Exit(1)
     response.raise_for_status()
 
 
@@ -275,7 +272,6 @@ def list_secrets():
 def share_secret(
     key: str,
     github_id: str,
-    can_write: bool = typer.Option(True, help="Allow the user to update the shared secret."),
 ):
     """
     Share a secret with another GitHub user.
@@ -283,11 +279,10 @@ def share_secret(
     response = _request_with_auth(
         "POST",
         f"/secrets/{key}/share",
-        json={"github_id": github_id, "can_write": can_write},
+        json={"github_id": github_id},
     )
     if response.status_code == 200:
-        access = "write" if can_write else "read"
-        typer.echo(f"Granted {access} access to `{key}` for {github_id}.")
+        typer.echo(f"Granted access to `{key}` for {github_id}.")
         return
     if response.status_code == 404:
         typer.echo(f"Secret `{key}` not found.")

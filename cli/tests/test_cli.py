@@ -80,6 +80,51 @@ def test_logout_removes_token_file(monkeypatch, tmp_path):
     assert not token_file.exists()
 
 
+def test_commands_require_login_when_no_token(monkeypatch, tmp_path):
+    token_file = tmp_path / "token.json"
+    monkeypatch.setattr(cli, "TOKEN_FILE", token_file)
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["list"])
+
+    assert result.exit_code == 1
+    assert "Not logged in" in result.stdout
+
+
+def test_request_with_auth_attaches_bearer_token(monkeypatch):
+    captured_headers = {}
+
+    def fake_ensure_token(scope=cli.DEFAULT_SCOPE):
+        return {"access_token": "secret-token"}
+
+    def fake_request(method, url, **kwargs):
+        captured_headers.update(kwargs.get("headers", {}))
+        return DummyResponse(200, {"ok": True})
+
+    monkeypatch.setattr(cli, "_ensure_token", fake_ensure_token)
+    monkeypatch.setattr(cli.httpx, "request", fake_request)
+
+    response = cli._request_with_auth("GET", "/secrets")
+
+    assert isinstance(response, DummyResponse)
+    assert captured_headers.get("Authorization") == "Bearer secret-token"
+
+
+def test_create_secret_duplicate_key(monkeypatch):
+    def fake_request(method, path, **kwargs):
+        assert method == "POST"
+        assert path == "/secrets"
+        return DummyResponse(409, {"detail": "duplicate"})
+
+    monkeypatch.setattr(cli, "_request_with_auth", fake_request)
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["create", "api_key", "secret"])
+
+    assert result.exit_code == 1
+    assert "Secret `api_key` already exists." in result.stdout
+
+
 def test_loads_dotenv_if_present(monkeypatch, tmp_path):
     for key in ("BACKEND_URL", "SECRETS_HTTP_TIMEOUT"):
         monkeypatch.delenv(key, raising=False)

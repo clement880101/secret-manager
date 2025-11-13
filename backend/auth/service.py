@@ -136,7 +136,6 @@ def exchange_code_for_token(code: str, state: str) -> Tuple[str, Dict[str, Any]]
     if session is None:
         raise HTTPException(400, "Login session not found or expired")
     config = _get_github_config()
-    print(config)
     data = {
         "client_id": config["client_id"],
         "client_secret": config["client_secret"],
@@ -285,14 +284,21 @@ def get_session_status(session_id: str) -> Dict[str, Any]:
         raise HTTPException(404, "Login session not found or expired")
     status = session.get("status", "pending")
     if status == "ready":
-        token = session.get("token")
+        token_payload = session.get("token")
         user_id = session.get("user_id")
-        if user_id is None and token and isinstance(token, dict):
-            user = token.get("user")
-            if isinstance(user, dict):
-                user_id = user.get("id")
+        access_token = None
+        if isinstance(token_payload, dict):
+            access_token = token_payload.get("access_token")
+            if user_id is None:
+                user = token_payload.get("user")
+                if isinstance(user, dict):
+                    user_id = user.get("id")
+        elif isinstance(token_payload, str):
+            access_token = token_payload
         SESSION_STORE.pop(session_id, None)
-        response = {"status": "ready", "token": token}
+        if access_token is None:
+            raise HTTPException(500, "Login session missing access token")
+        response = {"status": "ready", "token": access_token}
         if user_id is not None:
             response["user_id"] = user_id
         return response

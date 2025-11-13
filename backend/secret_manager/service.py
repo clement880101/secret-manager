@@ -56,7 +56,7 @@ def list_visible(ext_user_id: str) -> List[dict]:
         return results
 
 
-def share_secret(owner_ext_id: str, key: str, target_ext_id: str, can_write: bool = True) -> None:
+def share_secret(owner_ext_id: str, key: str, target_ext_id: str) -> None:
     with session_scope() as session:
         owner = session.get(User, owner_ext_id)
         if owner is None:
@@ -76,7 +76,7 @@ def share_secret(owner_ext_id: str, key: str, target_ext_id: str, can_write: boo
         ).first()
         if duplicate is not None:
             return
-        session.add(Share(secret=secret, user=target, can_write=can_write))
+        session.add(Share(secret=secret, user=target))
 
 
 def delete_secret(owner_id: str, key: str) -> None:
