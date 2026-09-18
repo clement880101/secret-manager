@@ -63,3 +63,41 @@ def token_cache_ttl_seconds() -> int:
         return max(0, int(os.getenv("TOKEN_CACHE_TTL_SECONDS", "300")))
     except ValueError:
         return 300
+
+
+def auth_mode() -> str:
+    """Return "local" or "github".
+
+    Defaults to whichever the deployment is actually configured for, so that
+    pulling the image and running it works with no setup at all, while an
+    existing GitHub deployment keeps behaving exactly as before.
+
+    Explicit AUTH_MODE wins. Otherwise: GitHub if an OAuth app is configured,
+    local if not.
+    """
+    explicit = os.getenv("AUTH_MODE", "").strip().lower()
+    if explicit in {"local", "github"}:
+        return explicit
+    if os.getenv("OAUTH_ID_GITHUB") and os.getenv("OAUTH_SECRET_GITHUB"):
+        return "github"
+    return "local"
+
+
+def bootstrap_token() -> str:
+    """A first token to hand out, instead of one generated at startup.
+
+    Useful when the deployment is immutable or the logs are awkward to read.
+    """
+    return os.getenv("BOOTSTRAP_TOKEN", "").strip()
+
+
+def registration_open() -> bool:
+    """Whether anyone who can reach the service may create an account.
+
+    Open by default, so a freshly started deployment is usable by the people it
+    was started for without an administrator handing out tokens first. An
+    account only ever grants access to its own secrets plus whatever is shared
+    with it, so this is not a way into anyone else's data -- but close it with
+    ALLOW_REGISTRATION=false on anything reachable from the open internet.
+    """
+    return bool_env("ALLOW_REGISTRATION", default=True)

@@ -1,21 +1,26 @@
 # Secret Manager
 
-A lightweight, distributed secret manager. Store a secret, share it with
-another GitHub user, read it back from any machine.
+A lightweight, distributed secret manager. Store a secret, share it with a
+teammate, read it back from any machine.
 
 - **One binary.** Under 10 MB, no Python, no runtime to install.
 - **One container.** Configured entirely through environment variables.
 - **Actually distributed.** No state in process memory, so it runs behind a load
   balancer across as many replicas as you like.
-- **Your GitHub account is your identity.** No new passwords, no user table to
-  administer.
+- **Nothing external required.** Its own accounts, its own tokens, its own
+  database. `docker run` is the whole setup, and GitHub login is opt-in.
 
 ```bash
-secretmgr login
+docker run -d -p 8000:8000 -v secretmgr-data:/data \
+  ghcr.io/clement880101/secret-manager:latest
+
+secretmgr register alice     # your teammates do the same
 secretmgr create db-pw hunter2
-secretmgr share db-pw 5842167
-secretmgr list
+secretmgr share db-pw bob
 ```
+
+No OAuth app to register, no accounts on anyone else's platform, no outbound
+network access. Users sign themselves up.
 
 [Website](https://clement880101.github.io/secret-manager/) ·
 [Download](https://github.com/clement880101/secret-manager/releases/latest) ·
@@ -48,7 +53,12 @@ secretmgr login
 
 | Command | Does |
 | --- | --- |
-| `secretmgr login` | Authenticate with GitHub; stores a token in `~/.token` (mode `0600`). |
+| `secretmgr register NAME` | Create an account on this deployment and log in. |
+| `secretmgr login NAME` | Log in with your password. |
+| `secretmgr login --token T` | Log in with a token the server issued. |
+| `secretmgr login` | Log in through GitHub, when the deployment is configured for it. |
+| `secretmgr token USER` | Issue a token for someone, without giving them a password. |
+| `secretmgr whoami` | Show who you are and how this deployment authenticates. |
 | `secretmgr logout` | Remove the stored token. |
 | `secretmgr create KEY VALUE` | Store a secret you own. |
 | `secretmgr list` | Everything visible to you: yours, plus what others shared. |
@@ -57,8 +67,9 @@ secretmgr login
 | `secretmgr ping` | Check the backend is reachable. |
 | `secretmgr version` | Print the CLI version. |
 
-`share` takes a numeric GitHub user ID, not a username. Find one with
-`curl -s https://api.github.com/users/<login> | jq .id`.
+`share` takes whatever identifies the recipient on that deployment: the name
+you issued their token under in local mode, or their numeric GitHub user ID in
+GitHub mode (`curl -s https://api.github.com/users/<login> | jq .id`).
 
 ## Run the server
 
@@ -66,17 +77,34 @@ The backend is a single stateless container listening on port 8000. It keeps
 everything in a SQL database and does **not** terminate TLS — whatever you put
 in front of it already does.
 
-**The database ships with it.** SQLite is part of the Python standard library,
-so this needs nothing else running:
+**Nothing else is required.** The database ships with it (SQLite is part of the
+Python standard library) and it issues its own tokens:
 
 ```bash
 docker run -d -p 8000:8000 -v secretmgr-data:/data \
-  -e BACKEND_URL=https://secrets.example.com \
-  -e OAUTH_ID_GITHUB=... \
-  -e OAUTH_SECRET_GITHUB=... \
-  -e SECRET_ENCRYPTION_KEY=... \
   ghcr.io/clement880101/secret-manager:latest
 ```
+
+People sign themselves up with `secretmgr register <name>` — no invitation and
+no GitHub account. Close that with `ALLOW_REGISTRATION=false` on anything
+reachable from the open internet; an administrator can then hand out access
+with `secretmgr token <name>` instead.
+
+The server also prints one token on first start, so there is always a way in:
+
+```
+No API tokens existed, so one was created for user 'admin'.
+This is shown once and cannot be recovered:
+
+    smt_sGQr0f3dFBP39sUNBm2jpwZ6tnZyFms-dLPcIUp6SwE
+```
+
+Set `BOOTSTRAP_TOKEN` to choose it yourself instead. Passwords are hashed with
+scrypt and tokens are stored only as a SHA-256, so a copy of the database is
+not a set of working credentials.
+
+For anything real, also set `SECRET_ENCRYPTION_KEY` (encrypts values at rest)
+and `BACKEND_URL` (the address clients actually reach).
 
 The volume matters: `/data` is where the database lives, and without it the
 file goes into the container's writable layer and disappears with the
@@ -107,9 +135,12 @@ running multiple replicas, and upgrading.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `BACKEND_URL` | yes | Public URL clients reach. GitHub redirects the OAuth callback here. |
-| `OAUTH_ID_GITHUB` | yes | GitHub OAuth app client ID. |
-| `OAUTH_SECRET_GITHUB` | yes | GitHub OAuth app client secret. |
+| `AUTH_MODE` | no | `local` or `github`. Defaults to `github` when an OAuth app is configured, `local` otherwise. |
+| `ALLOW_REGISTRATION` | no | Whether anyone reaching the service may sign up. Default `true`. |
+| `BOOTSTRAP_TOKEN` | no | Local mode: the first token, instead of a generated one. |
+| `BACKEND_URL` | github mode | Public URL clients reach. GitHub redirects the OAuth callback here. |
+| `OAUTH_ID_GITHUB` | github mode | GitHub OAuth app client ID. |
+| `OAUTH_SECRET_GITHUB` | github mode | GitHub OAuth app client secret. |
 | `SECRET_ENCRYPTION_KEY` | recommended | Fernet key. **Unset means values are stored in plaintext.** |
 | `DB_URL` | no | Defaults to local SQLite. Use Postgres for anything real. |
 | `ENABLE_API_DOCS` | no | Serve `/docs`. Default `false`. |
@@ -117,15 +148,24 @@ running multiple replicas, and upgrading.
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins. Default: none. |
 | `TOKEN_CACHE_TTL_SECONDS` | no | Default `300`. `0` disables caching. |
 
-Create the GitHub OAuth app at <https://github.com/settings/developers> with
-callback URL `<BACKEND_URL>/auth/callback`.
+### Using GitHub instead
+
+Set `OAUTH_ID_GITHUB` and `OAUTH_SECRET_GITHUB` and the service switches to
+GitHub logins: `secretmgr login` opens a browser, identities are GitHub user
+IDs, and the token routes disappear. Create the OAuth app at
+<https://github.com/settings/developers> with callback URL
+`<BACKEND_URL>/auth/callback`.
+
+The trade: no tokens to hand out and no accounts to administer, in exchange for
+every user needing a GitHub account and the server needing outbound access to
+`api.github.com`.
 
 ## How it works
 
-1. `secretmgr login` opens GitHub's authorization page and polls the backend.
-2. The backend trades the code for a GitHub token and hands it to the CLI once.
-3. Every later request carries that token; the backend verifies it against
-   GitHub and caches the result briefly.
+1. You register, or log in with a password, a token, or GitHub.
+2. Every request carries that token as a bearer credential.
+3. The backend resolves it to a user: against its own table in local mode, or
+   against GitHub (cached briefly) in GitHub mode.
 4. Secrets are encrypted before they reach the database, decrypted on read.
 
 Login state — the OAuth `state`, the pending session, the issued token — lives

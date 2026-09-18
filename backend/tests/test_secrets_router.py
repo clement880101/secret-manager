@@ -28,6 +28,9 @@ def _reset_app_modules() -> None:
 def client(monkeypatch, tmp_path):
     """Serve the secrets router against a fresh SQLite file with GitHub stubbed out."""
     monkeypatch.setenv("DB_URL", f"sqlite:///{tmp_path / 'secrets.db'}")
+    # This file exercises GitHub-token auth, so pin the mode rather than
+    # letting it be inferred from whether OAuth vars happen to be set.
+    monkeypatch.setenv("AUTH_MODE", "github")
 
     project_root = Path(__file__).resolve().parent.parent
     if str(project_root) not in sys.path:

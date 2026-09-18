@@ -13,6 +13,7 @@ from sqlalchemy import update
 import crypto
 import settings
 from database import session_scope
+from . import local
 from .models import LoginSession, User, ensure_user
 
 
@@ -268,18 +269,25 @@ def verify_access_token(access_token: str, token_kind: Literal["oauth", "pat"] =
 
 
 def parse_token(auth_header: str | None) -> str:
-    """Extract and validate bearer token from Authorization header.
+    """Extract and validate the bearer token, returning the user it identifies.
 
-    Inputs:
-        auth_header (str | None): Raw Authorization header string.
-    Outputs:
-        str: GitHub user id associated with the verified token.
+    Which authority is asked depends on the deployment: a locally issued token
+    is checked against this service's own database, a GitHub token against
+    GitHub. Local mode is the default when no OAuth app is configured, so an
+    unconfigured deployment still authenticates rather than failing.
     """
     if not auth_header or not auth_header.lower().startswith("bearer "):
         raise HTTPException(401, "Missing bearer token")
     token = auth_header.split(" ", 1)[1].strip()
     if not token:
         raise HTTPException(401, "Missing bearer token")
+
+    if settings.auth_mode() == "local":
+        user_id = local.resolve_token(token)
+        if user_id is None:
+            raise HTTPException(401, "Invalid or revoked token")
+        return user_id
+
     user = verify_access_token(token, token_kind="oauth")
     get_or_create_user(user["id"])
     return user["id"]
