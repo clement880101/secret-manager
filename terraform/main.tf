@@ -196,11 +196,17 @@ resource "aws_ecs_task_definition" "api" {
       environment = [
         {
           name  = "OAUTH_ID_GITHUB"
-          value = "Ov23liZnlg8w1GWaceQE"
+          value = var.oauth_client_id
         },
         {
+          # Must match what clients actually call, because GitHub redirects the
+          # OAuth callback here. With HTTPS on, that is the CloudFront hostname.
           name  = "BACKEND_URL"
-          value = "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000"
+          value = local.api_base_url
+        },
+        {
+          name  = "ENABLE_TEST_LOGIN"
+          value = var.enable_test_login ? "true" : "false"
         }
       ]
       portMappings = [
@@ -222,6 +228,13 @@ resource "aws_ecs_task_definition" "api" {
         {
           name      = "OAUTH_SECRET_GITHUB"
           valueFrom = aws_secretsmanager_secret.app.arn
+        },
+        {
+          # Populate this secret with a Fernet key before deploying, otherwise
+          # the service falls back to storing secret values in plaintext:
+          #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+          name      = "SECRET_ENCRYPTION_KEY"
+          valueFrom = aws_secretsmanager_secret.encryption_key.arn
         }
       ]
     }
@@ -249,3 +262,113 @@ resource "aws_ecs_service" "api" {
   }
 }
 
+
+# --------------------------------------------------------------------------
+# HTTPS
+#
+# The NLB speaks plain TCP on port 8000, so clients would otherwise send their
+# GitHub token and every secret value across the internet in the clear.
+# CloudFront terminates TLS using its own free *.cloudfront.net certificate,
+# which needs no domain and therefore works for any deployment of this project.
+#
+# The CloudFront-to-origin hop stays HTTP. It runs over the AWS backbone rather
+# than the public internet, but it is not encrypted: closing that gap needs a
+# certificate the origin can present, which needs a domain you control. Set
+# domain_name and acm_certificate_arn if you have one.
+# --------------------------------------------------------------------------
+
+locals {
+  # AWS-managed policies. An API must not be cached, and it needs the viewer's
+  # Authorization header forwarded or every request arrives unauthenticated.
+  cloudfront_caching_disabled_policy_id       = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  cloudfront_all_viewer_except_host_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+
+  api_origin_id = "secretmgr-nlb-origin"
+
+  api_base_url = var.enable_https ? (
+    var.domain_name != "" ? "https://${var.domain_name}" : "https://${aws_cloudfront_distribution.api[0].domain_name}"
+  ) : "http://${aws_lb.api.dns_name}:8000"
+}
+
+resource "aws_cloudfront_distribution" "api" {
+  count = var.enable_https ? 1 : 0
+
+  enabled         = true
+  comment         = "HTTPS entrypoint for the secret manager API"
+  is_ipv6_enabled = true
+  price_class     = "PriceClass_100"
+
+  aliases = var.domain_name != "" ? [var.domain_name] : []
+
+  origin {
+    domain_name = aws_lb.api.dns_name
+    origin_id   = local.api_origin_id
+
+    custom_origin_config {
+      http_port                = 8000
+      https_port               = 443
+      origin_protocol_policy   = "http-only"
+      origin_ssl_protocols     = ["TLSv1.2"]
+      origin_read_timeout      = 30
+      origin_keepalive_timeout = 5
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id       = local.api_origin_id
+    viewer_protocol_policy = "redirect-to-https"
+
+    allowed_methods = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods  = ["GET", "HEAD"]
+
+    cache_policy_id          = local.cloudfront_caching_disabled_policy_id
+    origin_request_policy_id = local.cloudfront_all_viewer_except_host_policy_id
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = var.domain_name == ""
+    acm_certificate_arn            = var.domain_name != "" ? var.acm_certificate_arn : null
+    ssl_support_method             = var.domain_name != "" ? "sni-only" : null
+    minimum_protocol_version       = var.domain_name != "" ? "TLSv1.2_2021" : null
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.domain_name == "" || var.acm_certificate_arn != ""
+      error_message = "domain_name requires acm_certificate_arn (issued in us-east-1)."
+    }
+  }
+}
+
+# Key used to encrypt secret values before they reach the database. Kept
+# separate from the OAuth secret so it can be rotated independently.
+resource "aws_secretsmanager_secret" "encryption_key" {
+  name                    = "secretmgr/encryption-key"
+  description             = "Fernet key used to encrypt secret values at rest"
+  recovery_window_in_days = 7
+}
+
+resource "aws_iam_role_policy" "encryption_key_access" {
+  name = "secretmgr-encryption-key-access"
+  role = aws_iam_role.ecs_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = aws_secretsmanager_secret.encryption_key.arn
+      }
+    ]
+  })
+}

@@ -1,0 +1,12 @@
+# A local .env holds the OAuth client secret. `COPY . /app` would otherwise
+# bake it into the image for anyone who can pull it.
+.env
+*.env
+
+# Local state and test noise that has no business in a production image.
+*.db
+.pytest_cache/
+__pycache__/
+*.pyc
+tests/
+.devcontainer.json
