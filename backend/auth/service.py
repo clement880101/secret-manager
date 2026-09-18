@@ -9,15 +9,15 @@ from typing import Any, Dict, Literal, Tuple
 import httpx
 from fastapi import HTTPException
 
+import crypto
 import settings
 from database import session_scope
-from .models import User
+from .models import LoginSession, User
 
 
 STATE_TTL_SECONDS = 300
 SESSION_TTL_SECONDS = 600
-OAUTH_STATE_STORE: Dict[str, Dict[str, Any]] = {} # State token store for preventing CSRF attacks
-SESSION_STORE: Dict[str, Dict[str, Any]] = {} # Session store for storing login sessions
+# Login state lives in the database, not in this process: see LoginSession.
 
 # Verified tokens, keyed by digest rather than by the token itself so the raw
 # credential is not held in memory any longer than the request needs it.
@@ -49,32 +49,19 @@ def _get_github_config() -> Dict[str, str]:
     }
 
 
-def _cleanup_states(now: float) -> None:
-    """Remove expired state entries from the in-memory OAuth state store.
+def _purge_expired(now: float) -> None:
+    """Drop login sessions past their lifetime, in a transaction of its own.
 
-    Inputs:
-        now (float): Current timestamp used to compare with stored state timestamps.
-    Outputs:
-        None: Mutates `OAUTH_STATE_STORE` in place.
+    It has to commit independently: session_scope rolls back on exception, so
+    purging inside a block that then raises 404 for a missing session would
+    undo the cleanup every time it mattered. Running it on the paths that
+    already touch this table avoids needing a scheduled job on whatever
+    platform this is deployed to.
     """
-    expired = [
-        state
-        for state, metadata in OAUTH_STATE_STORE.items()
-        if now - metadata.get("created_at", 0) > STATE_TTL_SECONDS
-    ]
-    for state in expired:
-        OAUTH_STATE_STORE.pop(state, None)
-
-
-def _cleanup_sessions(now: float) -> None:
-    """Remove expired login sessions from the in-memory session store."""
-    expired = [
-        session_id
-        for session_id, metadata in SESSION_STORE.items()
-        if now - metadata.get("created_at", 0) > SESSION_TTL_SECONDS
-    ]
-    for session_id in expired:
-        SESSION_STORE.pop(session_id, None)
+    with session_scope() as db:
+        db.query(LoginSession).filter(
+            LoginSession.created_at < now - SESSION_TTL_SECONDS
+        ).delete(synchronize_session=False)
 
 
 def initiate_login(scope: str = "read:user user:email") -> Dict[str, str]:
@@ -83,17 +70,19 @@ def initiate_login(scope: str = "read:user user:email") -> Dict[str, str]:
     state = secrets.token_urlsafe(32)
     session_id = secrets.token_urlsafe(16)
     now = time.time()
-    _cleanup_states(now)
-    _cleanup_sessions(now)
-    SESSION_STORE[session_id] = {
-        "created_at": now,
-        "status": "pending",
-        "scope": scope,
-        "state": state,
-        "token": None,
-        "error_message": None,
-    }
-    OAUTH_STATE_STORE[state] = {"created_at": now, "session_id": session_id}
+
+    _purge_expired(now)
+    with session_scope() as db:
+        db.add(
+            LoginSession(
+                session_id=session_id,
+                state=state,
+                status="pending",
+                scope=scope,
+                created_at=now,
+            )
+        )
+
     params = {
         "client_id": config["client_id"],
         "redirect_uri": config["redirect_uri"],
@@ -106,26 +95,30 @@ def initiate_login(scope: str = "read:user user:email") -> Dict[str, str]:
 
 
 def _validate_state(state: str) -> str:
-    """Ensure the provided OAuth state exists and return its associated session id."""
+    """Redeem an OAuth state and return the login session it belongs to.
+
+    The state is cleared as part of redeeming it, so a replayed callback is
+    rejected even if it arrives within the TTL.
+    """
     now = time.time()
-    metadata = OAUTH_STATE_STORE.pop(state, None)
-    if metadata is None or now - metadata.get("created_at", 0) > STATE_TTL_SECONDS:
-        raise HTTPException(400, "Invalid or expired OAuth state")
-    session_id = metadata.get("session_id")
-    if session_id is None or session_id not in SESSION_STORE:
-        raise HTTPException(400, "Login session not found or expired")
-    _cleanup_states(now)
-    _cleanup_sessions(now)
-    return session_id
+    _purge_expired(now)
+    with session_scope() as db:
+        record = db.query(LoginSession).filter_by(state=state).first()
+        if record is None or now - record.created_at > STATE_TTL_SECONDS:
+            raise HTTPException(400, "Invalid or expired OAuth state")
+        session_id = record.session_id
+        record.state = None
+        return session_id
 
 
 def _set_session_error(session_id: str, message: str) -> None:
-    session = SESSION_STORE.get(session_id)
-    if session is None:
-        return
-    session["status"] = "error"
-    session["error_message"] = message
-    session["completed_at"] = time.time()
+    with session_scope() as db:
+        record = db.get(LoginSession, session_id)
+        if record is None:
+            return
+        record.status = "error"
+        record.error_message = message
+        record.completed_at = time.time()
 
 
 def exchange_code_for_token(code: str, state: str) -> Tuple[str, Dict[str, Any]]:
@@ -138,9 +131,6 @@ def exchange_code_for_token(code: str, state: str) -> Tuple[str, Dict[str, Any]]
         Tuple[str, Dict[str, Any]]: The session id and GitHub response payload containing the access token.
     """
     session_id = _validate_state(state)
-    session = SESSION_STORE.get(session_id)
-    if session is None:
-        raise HTTPException(400, "Login session not found or expired")
     config = _get_github_config()
     data = {
         "client_id": config["client_id"],
@@ -300,52 +290,51 @@ def login_with_personal_token(token: str) -> Dict[str, Any]:
 
 
 def complete_session(session_id: str, token_payload: Dict[str, Any], user: Dict[str, Any]) -> None:
-    session = SESSION_STORE.get(session_id)
-    if session is None:
-        raise HTTPException(404, "Login session not found or expired")
+    """Mark a login finished and stash the issued token for the CLI to collect."""
     get_or_create_user(user["id"])
-    session["user_id"] = user["id"]
-    session["status"] = "ready"
-    session["completed_at"] = time.time()
-    session["token"] = {
-        "access_token": token_payload["access_token"],
-        "token_type": token_payload.get("token_type", "bearer"),
-        "scope": token_payload.get("scope", ""),
-        "user": user,
-    }
+    with session_scope() as db:
+        record = db.get(LoginSession, session_id)
+        if record is None:
+            raise HTTPException(404, "Login session not found or expired")
+        record.status = "ready"
+        record.user_id = user["id"]
+        record.completed_at = time.time()
+        # A live GitHub token at rest gets the same protection as a secret.
+        record.access_token = crypto.encrypt_value(token_payload["access_token"])
+        record.token_type = token_payload.get("token_type", "bearer")
+        record.token_scope = token_payload.get("scope", "")
 
 
 def get_session_status(session_id: str) -> Dict[str, Any]:
+    """Report on a login, handing over the token exactly once.
+
+    The row is deleted as it is read, so a polled token cannot be collected
+    twice and does not linger in the database after the CLI has it.
+    """
     now = time.time()
-    _cleanup_sessions(now)
-    session = SESSION_STORE.get(session_id)
-    if session is None:
-        raise HTTPException(404, "Login session not found or expired")
-    status = session.get("status", "pending")
-    if status == "ready":
-        token_payload = session.get("token")
-        user_id = session.get("user_id")
-        access_token = None
-        if isinstance(token_payload, dict):
-            access_token = token_payload.get("access_token")
-            if user_id is None:
-                user = token_payload.get("user")
-                if isinstance(user, dict):
-                    user_id = user.get("id")
-        elif isinstance(token_payload, str):
-            access_token = token_payload
-        SESSION_STORE.pop(session_id, None)
-        if access_token is None:
-            raise HTTPException(500, "Login session missing access token")
-        response = {"status": "ready", "token": access_token}
-        if user_id is not None:
-            response["user_id"] = user_id
-        return response
-    if status == "error":
-        message = session.get("error_message") or "Login failed"
-        SESSION_STORE.pop(session_id, None)
-        return {"status": "error", "message": message}
-    return {"status": "pending"}
+    _purge_expired(now)
+    with session_scope() as db:
+        record = db.get(LoginSession, session_id)
+        if record is None:
+            raise HTTPException(404, "Login session not found or expired")
+
+        if record.status == "ready":
+            stored = record.access_token
+            user_id = record.user_id
+            db.delete(record)
+            if not stored:
+                raise HTTPException(500, "Login session missing access token")
+            response = {"status": "ready", "token": crypto.decrypt_value(stored)}
+            if user_id is not None:
+                response["user_id"] = user_id
+            return response
+
+        if record.status == "error":
+            message = record.error_message or "Login failed"
+            db.delete(record)
+            return {"status": "error", "message": message}
+
+        return {"status": "pending"}
 
 
 def fail_session(session_id: str, message: str) -> None:

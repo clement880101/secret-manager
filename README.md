@@ -13,7 +13,8 @@ Cloud-backed secret manager with a FastAPI backend, Python CLI, end-to-end tests
 | `backend/` | FastAPI service with OAuth authentication, unit tests under `tests/`, and containerized dev parity. |
 | `cli/` | Python CLI packaged with PyInstaller for `x86_64` and `arm64`, tested via `pytest`. |
 | `integration-tests/` | Runs the baked CLI binary against deployed endpoints using GitHub access tokens. |
-| `terraform/` | AWS infrastructure definitions for ECS, load balancer, and related resources. |
+| `terraform/` | One AWS deployment (ECS, load balancer, CloudFront). Optional — see `DEPLOYMENT.md` for platform-agnostic options. |
+| `deploy/` | Docker Compose stack for self-hosting: the API plus a durable Postgres. |
 | `docker-compose.yml` | Spins up backend and CLI containers together; mounts the repo for live code edits. |
 
 ### Local Development
@@ -58,6 +59,25 @@ Component commands:
 - `cli-ci.yml`: Triggered for `cli/**` changes. Runs unit tests, builds PyInstaller binaries on Ubuntu `x86_64` and `arm64`, and publishes artifacts.
 - `integration-tests.yml`: Fires after successful Backend or CLI CI runs (or direct changes within `integration-tests/**`). Downloads the latest CLI artifact and executes the integration test suite using GitHub access tokens.
 - `release.yml`: Triggered by `v*` tags. Builds the CLI with PyInstaller on Linux and macOS (`x86_64` and `arm64`), smoke tests each binary, and attaches them plus `SHA256SUMS` to a GitHub Release.
+
+### Deploying
+
+The backend is a single stateless container that runs anywhere: Docker, Compose,
+a PaaS that builds from a Dockerfile, Kubernetes, or a VPS behind a reverse
+proxy. It keeps state in any SQLAlchemy-supported database (SQLite or Postgres)
+and does not terminate TLS itself, so it fits whatever your platform already
+does. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+```bash
+docker run -d -p 8000:8000 \
+  -e BACKEND_URL=https://secrets.example.com \
+  -e OAUTH_ID_GITHUB=... -e OAUTH_SECRET_GITHUB=... \
+  -e SECRET_ENCRYPTION_KEY=... \
+  ghcr.io/clement880101/secret-manager:latest
+```
+
+`terraform/` holds the original AWS deployment. It is one option, not the
+supported path.
 
 ### Security
 
