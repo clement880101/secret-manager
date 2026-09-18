@@ -56,8 +56,20 @@ builds were mode `0644`; the CLI repairs the mode when it next reads the file.
 
 - **Secrets are returned in plaintext by `GET /secrets`**, so a stolen token
   exposes every value the account can see at once.
-- **No rate limiting.** A valid token can be replayed as fast as the service
-  will answer.
+- **Tokens do not expire.** Revoke them deliberately with `secretmgr revoke`
+  when a machine is lost or someone leaves.
+- **There is no audit log.** The service does not record who read which secret
+  and when, which some environments require.
+- **There is no account recovery.** A forgotten password needs an administrator
+  to issue a token with `secretmgr token <name>`; there is no reset by email.
+- **Authentication is rate limited; the rest of the API is not.** Failed logins
+  and registrations are counted per username and per address, and blocked past
+  `AUTH_RATE_LIMIT` (default 10) within `AUTH_RATE_WINDOW_SECONDS` (default
+  900). A *valid* token can still be replayed as fast as the service answers.
+- **Lockout is by username as well as address**, so someone who knows a
+  username can deliberately lock that account out for the window. The
+  alternative — limiting only by address — lets a distributed attacker spray
+  guesses freely, which is worse for a secret manager.
 - **Token verification is cached per process**, so a token revoked on GitHub
   stays accepted for up to `TOKEN_CACHE_TTL_SECONDS` on each replica. Set it to
   `0` where immediate revocation matters.

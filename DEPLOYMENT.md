@@ -164,15 +164,39 @@ map it to 8000 or override the command:
 uvicorn app:app --host 0.0.0.0 --port $PORT
 ```
 
+### A distributed deployment, in one command
+
+[`deploy/docker-compose.cluster.yml`](deploy/docker-compose.cluster.yml) runs
+the API behind a load balancer, sharing one Postgres:
+
+```bash
+cd deploy
+cp .env.example .env    # set BOOTSTRAP_TOKEN as well
+docker compose -f docker-compose.cluster.yml up -d --scale api=3
+```
+
+Scale to any number. Replicas hold no state, so a request is served by whichever
+one the balancer picks, and a login started on one is finished by another. The
+balancer re-resolves the replicas every few seconds, so scaling up or losing one
+needs no restart.
+
 ### Kubernetes
 
-Nothing unusual is required: one Deployment, one Service, secrets from a
-`Secret`, and an Ingress that terminates TLS. Use Postgres and the pods can
-scale past one replica — login state lives in the database, not in process
-memory, so a request can land on any pod.
+[`deploy/k8s/`](deploy/k8s/) has manifests for a three-replica Deployment, a
+Postgres, a Service and an example Ingress, with a README. Scale with
+`kubectl scale deployment/secretmgr --replicas=10`; nothing else changes, and no
+session affinity is needed anywhere.
 
-`GET /healthz` returns `{"ok": true}` and is suitable for both liveness and
-readiness probes.
+`GET /healthz` returns `{"ok": true, "version": ...}`, does no database work, and
+suits both liveness and readiness probes.
+
+### Platforms that inject a port
+
+`PORT` is honoured when set, so Cloud Run, Heroku-style platforms and anything
+else that chooses the port for you works without a custom command. `HOST`,
+`LOG_LEVEL` and `FORWARDED_ALLOW_IPS` are configurable the same way, and the
+server reads `X-Forwarded-*` so it sees the client's address rather than the
+proxy's.
 
 ### AWS with Terraform
 

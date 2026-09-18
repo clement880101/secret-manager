@@ -291,3 +291,129 @@ def test_registered_users_can_share_with_each_other(local_client):
     }
     # Sharing grants read, not control.
     assert client.delete("/secrets/k", headers=bh).status_code == 404
+
+
+# --- rate limiting -----------------------------------------------------------
+
+@pytest.fixture()
+def limited_client(monkeypatch, tmp_path):
+    _load(monkeypatch, tmp_path, AUTH_RATE_LIMIT="3", AUTH_RATE_WINDOW_SECONDS="900")
+    app_module = importlib.import_module("app")
+    return TestClient(app_module.app), sys.modules["auth.local"]
+
+
+def test_repeated_failures_are_blocked(limited_client):
+    """scrypt makes each guess cost ~30ms; that is a speed bump, not a defence."""
+    client, _ = limited_client
+    client.post("/auth/register", json={"username": "victim", "password": "real password"})
+
+    codes = [
+        client.post("/auth/sessions", json={"username": "victim", "password": f"guess{i}"}).status_code
+        for i in range(5)
+    ]
+
+    assert codes[:3] == [401, 401, 401]
+    assert codes[3:] == [429, 429]
+
+
+def test_lockout_applies_even_to_the_right_password(limited_client):
+    """Otherwise an attacker just keeps guessing past the limit."""
+    client, _ = limited_client
+    client.post("/auth/register", json={"username": "victim", "password": "real password"})
+    for i in range(3):
+        client.post("/auth/sessions", json={"username": "victim", "password": f"guess{i}"})
+
+    response = client.post("/auth/sessions", json={"username": "victim", "password": "real password"})
+
+    assert response.status_code == 429
+    assert "Retry-After" in response.headers
+
+
+def test_a_successful_login_clears_the_count(limited_client):
+    client, _ = limited_client
+    client.post("/auth/register", json={"username": "victim", "password": "real password"})
+    client.post("/auth/sessions", json={"username": "victim", "password": "wrong"})
+    client.post("/auth/sessions", json={"username": "victim", "password": "real password"})
+
+    # Back to a full allowance rather than one away from lockout.
+    codes = [
+        client.post("/auth/sessions", json={"username": "victim", "password": "wrong"}).status_code
+        for _ in range(3)
+    ]
+    assert codes == [401, 401, 401]
+
+
+def test_failed_registrations_are_counted(limited_client):
+    """Registration would otherwise be an unlimited way to probe for usernames."""
+    client, _ = limited_client
+    client.post("/auth/register", json={"username": "taken", "password": "real password"})
+
+    codes = [
+        client.post("/auth/register", json={"username": "taken", "password": "other password"}).status_code
+        for _ in range(5)
+    ]
+
+    assert 429 in codes
+
+
+def test_rate_limiting_can_be_disabled(monkeypatch, tmp_path):
+    _load(monkeypatch, tmp_path, AUTH_RATE_LIMIT="0")
+    app_module = importlib.import_module("app")
+    client = TestClient(app_module.app)
+    client.post("/auth/register", json={"username": "victim", "password": "real password"})
+
+    codes = [
+        client.post("/auth/sessions", json={"username": "victim", "password": "wrong"}).status_code
+        for _ in range(6)
+    ]
+
+    assert set(codes) == {401}
+
+
+# --- password change and revocation ------------------------------------------
+
+def test_password_can_be_changed_and_the_old_one_stops_working(local_client):
+    client, _ = local_client
+    token = client.post(
+        "/auth/register", json={"username": "alice", "password": "old password"}
+    ).json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    changed = client.post(
+        "/auth/password",
+        json={"current_password": "old password", "new_password": "new password"},
+        headers=headers,
+    )
+
+    assert changed.status_code == 200
+    assert client.post("/auth/sessions", json={"username": "alice", "password": "old password"}).status_code == 401
+    assert client.post("/auth/sessions", json={"username": "alice", "password": "new password"}).status_code == 200
+
+
+def test_changing_a_password_requires_the_current_one(local_client):
+    client, _ = local_client
+    token = client.post(
+        "/auth/register", json={"username": "alice", "password": "old password"}
+    ).json()["token"]
+
+    response = client.post(
+        "/auth/password",
+        json={"current_password": "not it", "new_password": "new password"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_a_revoked_token_stops_working(local_client):
+    client, _ = local_client
+    alice = client.post("/auth/register", json={"username": "alice", "password": "a password"}).json()["token"]
+    spare = client.post("/auth/register", json={"username": "alice2", "password": "a password"}).json()["token"]
+    headers = {"Authorization": f"Bearer {alice}"}
+
+    assert client.get("/auth/whoami", headers={"Authorization": f"Bearer {spare}"}).status_code == 200
+
+    revoked = client.request("DELETE", "/auth/tokens", json={"token": spare}, headers=headers)
+
+    assert revoked.status_code == 200 and revoked.json()["revoked"] is True
+    assert client.get("/auth/whoami", headers={"Authorization": f"Bearer {spare}"}).status_code == 401

@@ -1,0 +1,63 @@
+# A minimal Postgres, so this directory works on its own. Point DB_URL at a
+# managed database instead if you have one -- nothing here depends on this
+# particular Postgres.
+apiVersion: v1
+kind: Service
+metadata:
+  name: secretmgr-db
+spec:
+  clusterIP: None
+  selector:
+    app: secretmgr-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: secretmgr-db
+spec:
+  serviceName: secretmgr-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secretmgr-db
+  template:
+    metadata:
+      labels:
+        app: secretmgr-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: secretmgr
+            - name: POSTGRES_DB
+              value: secretmgr
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secretmgr
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "secretmgr"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

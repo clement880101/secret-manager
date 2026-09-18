@@ -1,7 +1,11 @@
 # Secret Manager
 
-A lightweight, distributed secret manager. Store a secret, share it with a
-teammate, read it back from any machine.
+A lightweight, distributed secret manager you run in your own cloud. Store a
+secret, share it with a teammate, read it back from any machine.
+
+```bash
+docker pull ghcr.io/clement880101/secret-manager
+```
 
 - **One binary.** Under 10 MB, no Python, no runtime to install.
 - **One container.** Configured entirely through environment variables.
@@ -28,48 +32,56 @@ network access. Users sign themselves up.
 
 ---
 
-## Install the CLI
+## What you need to run it
 
-Download the build for your platform, make it executable, put it on your `PATH`:
-
-```bash
-curl -fsSL -o secretmgr \
-  https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-arm64
-chmod +x secretmgr && sudo mv secretmgr /usr/local/bin/
-```
-
-Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64` or
-`secretmgr-linux-arm64`. On macOS the binaries are unsigned, so clear the
-quarantine flag once: `xattr -d com.apple.quarantine /usr/local/bin/secretmgr`.
-
-Point it at your deployment and log in:
+**A container runtime. That is the whole list.** AWS, GCP, Azure, a VPS,
+Kubernetes, or a laptop — anywhere that runs a container.
 
 ```bash
-export BACKEND_URL=https://secrets.example.com
-secretmgr login
+docker run -d -p 8000:8000 -v secretmgr-data:/data \
+  ghcr.io/clement880101/secret-manager:latest
 ```
 
-### Commands
+No database to provision, no OAuth app to register, no TLS certificate, no
+config file, no accounts to create in advance. The volume is the one thing not
+to skip: without it the database lives in the container's writable layer and
+goes away with the container.
 
-| Command | Does |
+Then, depending on what you are doing:
+
+| If you want | Add |
 | --- | --- |
-| `secretmgr register NAME` | Create an account on this deployment and log in. |
-| `secretmgr login NAME` | Log in with your password. |
-| `secretmgr login --token T` | Log in with a token the server issued. |
-| `secretmgr login` | Log in through GitHub, when the deployment is configured for it. |
-| `secretmgr token USER` | Issue a token for someone, without giving them a password. |
-| `secretmgr whoami` | Show who you are and how this deployment authenticates. |
-| `secretmgr logout` | Remove the stored token. |
-| `secretmgr create KEY VALUE` | Store a secret you own. |
-| `secretmgr list` | Everything visible to you: yours, plus what others shared. |
-| `secretmgr share KEY GITHUB_ID` | Grant another GitHub user read access. |
-| `secretmgr delete KEY` | Delete a secret you own. |
-| `secretmgr ping` | Check the backend is reachable. |
-| `secretmgr version` | Print the CLI version. |
+| Anything you would miss | `SECRET_ENCRYPTION_KEY`, or values are stored unencrypted |
+| Clients on other machines | `BACKEND_URL`, and TLS in front of it |
+| To not be publicly signup-able | `ALLOW_REGISTRATION=false` |
+| More than one replica | `DB_URL` pointing at Postgres, and a fixed `BOOTSTRAP_TOKEN` |
+| A specific listen port | `PORT` — honoured automatically on Cloud Run and similar |
 
-`share` takes whatever identifies the recipient on that deployment: the name
-you issued their token under in local mode, or their numeric GitHub user ID in
-GitHub mode (`curl -s https://api.github.com/users/<login> | jq .id`).
+For the CLI: one binary, no runtime. Set `BACKEND_URL` to your own server —
+without it the CLI talks to the project's demo deployment, which is not where
+you want your secrets.
+
+## Production checklist
+
+Working through this is the difference between a demo and a deployment:
+
+- [ ] **`SECRET_ENCRYPTION_KEY` set**, and backed up somewhere you can get it
+      from. Losing it makes every stored value unreadable, permanently.
+- [ ] **TLS in front.** The service speaks plain HTTP by design; terminate at
+      your proxy, ingress or platform. The CLI warns when it is talking
+      cleartext to a remote host.
+- [ ] **`DB_URL` pointing at Postgres**, not the bundled SQLite, if you run more
+      than one replica or your platform replaces containers.
+- [ ] **Database backed up.** Nothing here backs itself up.
+- [ ] **`ALLOW_REGISTRATION=false`** if the deployment is reachable from the
+      open internet and you know who should have accounts.
+- [ ] **`BOOTSTRAP_TOKEN` set and then rotated**, or the first token sits in
+      your logs.
+- [ ] **`ENABLE_API_DOCS` left off**, so the schema is not published.
+- [ ] Checksums verified on any binary you distribute internally.
+
+Read [SECURITY.md](SECURITY.md) for what this does *not* do. There are real
+limitations and they are listed plainly.
 
 ## Run the server
 
@@ -127,6 +139,15 @@ cd deploy && cp .env.example .env   # fill it in
 docker compose up -d
 ```
 
+Or run it distributed, behind a load balancer, in one command:
+
+```bash
+docker compose -f docker-compose.cluster.yml up -d --scale api=3
+```
+
+Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/). Replicas hold no
+state, so scaling needs no session affinity and no further configuration.
+
 **[DEPLOYMENT.md](DEPLOYMENT.md) has the detail**: every configuration
 variable, choosing a database, reverse proxies, PaaS platforms, Kubernetes,
 running multiple replicas, and upgrading.
@@ -160,6 +181,50 @@ The trade: no tokens to hand out and no accounts to administer, in exchange for
 every user needing a GitHub account and the server needing outbound access to
 `api.github.com`.
 
+## Then install the CLI
+
+Once your server is up, this is how people talk to it. Download the build
+for your platform, make it executable, put it on your `PATH`:
+
+```bash
+curl -fsSL -o secretmgr \
+  https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-arm64
+chmod +x secretmgr && sudo mv secretmgr /usr/local/bin/
+```
+
+Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64`,
+`secretmgr-linux-arm64` or `secretmgr-windows-x86_64.exe`. On macOS the binaries are unsigned, so clear the
+quarantine flag once: `xattr -d com.apple.quarantine /usr/local/bin/secretmgr`.
+
+Point it at your deployment and log in:
+
+```bash
+export BACKEND_URL=https://secrets.example.com
+secretmgr login
+```
+
+### Commands
+
+| Command | Does |
+| --- | --- |
+| `secretmgr register NAME` | Create an account on this deployment and log in. |
+| `secretmgr login NAME` | Log in with your password. |
+| `secretmgr login --token T` | Log in with a token the server issued. |
+| `secretmgr login` | Log in through GitHub, when the deployment is configured for it. |
+| `secretmgr token USER` | Issue a token for someone, without giving them a password. |
+| `secretmgr whoami` | Show who you are and how this deployment authenticates. |
+| `secretmgr logout` | Remove the stored token. |
+| `secretmgr create KEY VALUE` | Store a secret you own. |
+| `secretmgr list` | Everything visible to you: yours, plus what others shared. |
+| `secretmgr share KEY GITHUB_ID` | Grant another GitHub user read access. |
+| `secretmgr delete KEY` | Delete a secret you own. |
+| `secretmgr ping` | Check the backend is reachable. |
+| `secretmgr version` | Print the CLI version. |
+
+`share` takes whatever identifies the recipient on that deployment: the name
+you issued their token under in local mode, or their numeric GitHub user ID in
+GitHub mode (`curl -s https://api.github.com/users/<login> | jq .id`).
+
 ## How it works
 
 1. You register, or log in with a password, a token, or GitHub.
@@ -180,7 +245,7 @@ even when it arrives concurrently.
 | --- | --- |
 | `backend/` | FastAPI service, SQLAlchemy models, tests. |
 | `cli/` | The CLI, packaged with PyInstaller. |
-| `deploy/` | Docker Compose stack: API plus Postgres. |
+| `deploy/` | Compose stacks (single node and clustered) plus Kubernetes manifests. |
 | `integration-tests/` | Drives the built binary against a real backend on a real database. |
 | `terraform/` | One AWS deployment. Optional — see `DEPLOYMENT.md`. |
 

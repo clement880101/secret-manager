@@ -1,0 +1,90 @@
+# A distributed deployment, in one command.
+#
+#   cp .env.example .env    # then fill it in
+#   docker compose -f docker-compose.cluster.yml up -d --scale api=3
+#
+# Three API replicas behind a load balancer, sharing one Postgres. Scale to any
+# number without changing anything: replicas hold no state, so a request can be
+# served by whichever one the balancer picks, and a login started on one is
+# finished by another.
+#
+# This is the same image as the single-container setup. The only difference is
+# that state lives in Postgres instead of the bundled SQLite, because SQLite
+# cannot back more than one writer.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-secretmgr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-secretmgr}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-secretmgr}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: ghcr.io/clement880101/secret-manager:latest
+    build:
+      context: ../backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: postgresql+psycopg://${POSTGRES_USER:-secretmgr}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-secretmgr}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in .env}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8000}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
+      # Every replica must agree on the first token, or each would mint its own
+      # on the way up and only one of them would be the one you were shown.
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:?set BOOTSTRAP_TOKEN in .env for a clustered deployment}
+    # No published port: the balancer is the way in, and publishing a fixed port
+    # would stop more than one replica from starting.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=3).status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  lb:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${API_PORT:-8000}:8080"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+
+configs:
+  caddyfile:
+    content: |
+      # Resolve the api service on every request rather than once at startup,
+      # so replicas added or replaced by `--scale` are picked up without a
+      # restart. Docker's embedded DNS returns all of them.
+      {
+        auto_https off
+      }
+      :8080 {
+        reverse_proxy {
+          dynamic a {
+            name api
+            port 8000
+            refresh 5s
+          }
+        }
+      }
+
+volumes:
+  pgdata:

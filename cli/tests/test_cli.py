@@ -148,6 +148,7 @@ def test_loads_dotenv_if_present(monkeypatch, tmp_path):
 
 
 
+@pytest.mark.skipif(os.name == "nt", reason="file modes are POSIX; Windows uses ACLs")
 def test_token_file_is_not_readable_by_others(monkeypatch, tmp_path):
     import stat as stat_module
 
@@ -160,6 +161,7 @@ def test_token_file_is_not_readable_by_others(monkeypatch, tmp_path):
     assert mode == 0o600, f"token file holds a live credential but is mode {oct(mode)}"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="file modes are POSIX; Windows uses ACLs")
 def test_token_file_written_over_a_loose_file_is_tightened(monkeypatch, tmp_path):
     import stat as stat_module
 
@@ -173,6 +175,7 @@ def test_token_file_written_over_a_loose_file_is_tightened(monkeypatch, tmp_path
     assert stat_module.S_IMODE(token_file.stat().st_mode) == 0o600
 
 
+@pytest.mark.skipif(os.name == "nt", reason="file modes are POSIX; Windows uses ACLs")
 def test_loading_a_legacy_world_readable_token_repairs_it(monkeypatch, tmp_path):
     import stat as stat_module
 

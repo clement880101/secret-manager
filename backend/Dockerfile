@@ -34,7 +34,10 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "debug"]
+# --proxy-headers matters once this sits behind a load balancer or ingress,
+# which is the normal way to run it: without it the app sees the proxy's
+# address rather than the client's.
+CMD ["./entrypoint.sh"]
 
 # uvicorn app:app --host 0.0.0.0 --port 8000
 # uvicorn app:app --host 0.0.0.0 --port 8000 --reload --log-level debug
