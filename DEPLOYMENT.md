@@ -40,9 +40,11 @@ its callback URL to `<BACKEND_URL>/auth/callback`.
 `DB_URL` accepts any SQLAlchemy URL. Both of these are exercised by the test
 suite and by a real container on each release:
 
-- `sqlite:///./secrets.db` — the default. Fine for a single box with a
-  persistent disk. **Not** fine anywhere containers get replaced, because the
-  file goes with them.
+- **SQLite — bundled, and the default.** The image needs no external database
+  to start. It writes to `/data/secrets.db`, which is declared as a volume:
+  mount one (`-v secretmgr-data:/data`) or the file lands in the container's
+  writable layer and is lost when the container is replaced. Fine for a single
+  instance; it cannot back more than one.
 - `postgresql+psycopg://user:password@host:5432/dbname` — use this on any
   platform that moves containers around, or if you run more than one replica.
   The driver ships in the image.
@@ -55,6 +57,7 @@ Tables are created on startup; there is no migration step to run.
 
 ```bash
 docker run -d --name secret-manager -p 8000:8000 \
+  -v secretmgr-data:/data \
   -e BACKEND_URL=https://secrets.example.com \
   -e OAUTH_ID_GITHUB=... \
   -e OAUTH_SECRET_GITHUB=... \
