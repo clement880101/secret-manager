@@ -1,5 +1,8 @@
-pyinstaller== 6.16.0
+# Runtime only. Keep it that way: PyInstaller bundles what it finds in the
+# build environment, so anything added here lands in the downloaded binary.
 httpx==0.28.1
-typer==0.20.0
-pytest==9.0.1
+# typer-slim is typer without the rich/pygments extras. The CLI uses only echo,
+# Option and Exit, so the full package shipped syntax highlighting it never
+# called.
+typer-slim==0.20.0
 python-dotenv==1.0.1

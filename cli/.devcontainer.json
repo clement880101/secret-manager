@@ -5,7 +5,7 @@
   ],
   "service": "cli",
   "workspaceFolder": "/workspace/cli",
-  "postCreateCommand": "pip install --no-cache-dir -r /workspace/cli/requirements.txt",
+  "postCreateCommand": "pip install --no-cache-dir -r /workspace/cli/requirements-dev.txt",
   "shutdownAction": "stopCompose",
   "customizations": {
     "vscode": {
