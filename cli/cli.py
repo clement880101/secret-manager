@@ -31,7 +31,7 @@ if _TOKEN_FILE_ENV:
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 TOKEN_FILE_MODE = 0o600
 
 # Talking to a remote backend over plain HTTP puts the access token and every
@@ -392,6 +392,46 @@ def issue_token(
     payload = response.json()
     typer.echo(f"Token for {payload['user_id']}:\n\n    {payload['token']}\n")
     typer.echo("It cannot be shown again. Share it over something private.")
+
+
+@app.command()
+def passwd(
+    current: str = typer.Option(None, "--current", help="Skip the prompt."),
+    new: str = typer.Option(None, "--new", help="Skip the prompt."),
+):
+    """
+    Change your password.
+    """
+    if current is None:
+        current = typer.prompt("Current password", hide_input=True)
+    if new is None:
+        new = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+    response = _request_with_auth(
+        "POST", "/auth/password", json={"current_password": current, "new_password": new}
+    )
+    if response.status_code in (400, 401, 429):
+        detail = ""
+        try:
+            detail = response.json().get("detail", "")
+        except ValueError:
+            pass
+        typer.echo(detail or "Could not change password.")
+        raise typer.Exit(1)
+    response.raise_for_status()
+    typer.echo("Password changed. Existing tokens still work; revoke any you no longer trust.")
+
+
+@app.command()
+def revoke(token: str = typer.Argument(..., help="The token to revoke.")):
+    """
+    Revoke a token, for instance after losing a machine.
+    """
+    response = _request_with_auth("DELETE", "/auth/tokens", json={"token": token})
+    response.raise_for_status()
+    if response.json().get("revoked"):
+        typer.echo("Token revoked.")
+    else:
+        typer.echo("No such token; nothing to revoke.")
 
 
 @app.command()

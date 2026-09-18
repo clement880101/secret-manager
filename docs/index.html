@@ -132,6 +132,21 @@
   .o{color:var(--muted)}
   .hl{color:#dfd7c6}
 
+  /* ---------- what you need ---------- */
+  .need{border:1px solid var(--line-strong);border-left:3px solid var(--amber);background:var(--ink-2);padding:clamp(20px,2.6vw,30px);margin-bottom:26px}
+  .need h3{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber);margin:0 0 14px;font-weight:400}
+  .need p{margin:0 0 16px;font-size:15.5px;color:#c6c0b4}
+  .needs{width:100%;border-collapse:collapse;font-size:15px}
+  .needs td{padding:10px 0;border-top:1px solid var(--line);vertical-align:top;color:#c6c0b4}
+  .needs tr:first-child td{border-top:none}
+  .needs td:first-child{padding-right:24px;width:38%;color:var(--paper)}
+  @media(max-width:620px){
+    .needs td,.needs td:first-child{display:block;width:auto;padding:0;border:none}
+    .needs td:first-child{padding-top:12px;border-top:1px solid var(--line)}
+    .needs td:last-child{padding-bottom:12px;padding-top:3px}
+    .needs tr:first-child td:first-child{border-top:none;padding-top:0}
+  }
+
   /* ---------- downloads ---------- */
   /* Explicit counts, not auto-fit: four cards must divide evenly or the 1px
      grid background shows through as an empty cell. */
@@ -218,7 +233,7 @@
 <main id="top">
 
   <div class="wrap hero hero-fade">
-    <p class="eyebrow">Lightweight &amp; distributed <span>/ GitHub-authenticated / v0.3.0</span></p>
+    <p class="eyebrow">Lightweight &amp; distributed <span>/ self-hosted / v0.4.0</span></p>
     <h1>A lightweight, distributed <span class="redact">secret</span> manager.</h1>
     <p class="lede">Pull the image and run it. It brings its own database and issues its own tokens, so there is nothing to register and nothing to connect &mdash; and it still scales across as many replicas as you like.</p>
     <div class="cta-row">
@@ -319,6 +334,18 @@
         <h2>Run your own</h2>
       </div>
       <p class="sec-note">One stateless container on port 8000, configured entirely through environment variables. It does not terminate TLS &mdash; whatever you put in front of it already does, which is what lets it run anywhere.</p>
+
+      <div class="need">
+        <h3>What you need</h3>
+        <p><strong>A container runtime. That is the whole list.</strong> No database to provision, no OAuth app to register, no certificate, no config file, no accounts created in advance. Then, depending on what you are doing:</p>
+        <table class="needs">
+          <tr><td>Anything you would miss</td><td><code class="inline">SECRET_ENCRYPTION_KEY</code>, or values are stored unencrypted</td></tr>
+          <tr><td>Clients on other machines</td><td><code class="inline">BACKEND_URL</code>, and TLS in front of it</td></tr>
+          <tr><td>Not publicly signup-able</td><td><code class="inline">ALLOW_REGISTRATION=false</code></td></tr>
+          <tr><td>More than one replica</td><td><code class="inline">DB_URL</code> at Postgres, and a fixed <code class="inline">BOOTSTRAP_TOKEN</code></td></tr>
+          <tr><td>A specific listen port</td><td><code class="inline">PORT</code> &mdash; honoured on Cloud Run and similar</td></tr>
+        </table>
+      </div>
 
       <div class="flow two" style="margin-bottom:26px">
         <div>
@@ -429,15 +456,14 @@ docker compose up -d</code>
         <h2>Before you trust it with anything</h2>
       </div>
       <div class="status">
-        <h3>Project status — early</h3>
+        <h3>Before you put real secrets in it</h3>
         <ul>
-          <li><strong>Secrets are returned in plaintext by <code class="inline">list</code></strong>, so a stolen token exposes every value that account can see at once.</li>
-          <li><strong>There is no rate limiting.</strong> A valid token can be replayed as fast as the service will answer.</li>
-          <li><strong>Encryption at rest is opt-in.</strong> Without <code class="inline">SECRET_ENCRYPTION_KEY</code> the backend stores values unencrypted and says so in its logs.</li>
-          <li><strong>The released binaries are unsigned.</strong> Verify the published SHA-256 checksums if that matters to you.</li>
-          <li><strong>TLS is your platform's job.</strong> The CLI warns when <code class="inline">BACKEND_URL</code> is plain HTTP to anything other than localhost.</li>
-          <li><strong>Anyone who can reach the service can sign up</strong> by default. An account only ever sees its own secrets plus what is shared with it, but set <code class="inline">ALLOW_REGISTRATION=false</code> on anything facing the open internet.</li>
-          <li><strong>Tokens do not expire on their own.</strong> Only their SHA-256 is stored, so a leaked database is not a set of working credentials, but revoke deliberately when someone leaves.</li>
+          <li><strong>Set <code class="inline">SECRET_ENCRYPTION_KEY</code> and back it up.</strong> Without it values are stored unencrypted; lose it and they are unreadable, permanently.</li>
+          <li><strong>Put TLS in front.</strong> The service speaks plain HTTP by design so it fits any platform. The CLI warns when it is talking cleartext to a remote host.</li>
+          <li><strong><code class="inline">list</code> returns values in plaintext</strong>, so a stolen token exposes everything that account can see at once.</li>
+          <li><strong>Authentication is rate limited; the rest of the API is not.</strong> Failed logins are blocked per username and per address, but a valid token can be replayed as fast as the service answers.</li>
+          <li><strong>No audit log and no account recovery.</strong> The service does not record who read what, and a forgotten password needs an administrator to issue a token.</li>
+          <li><strong>Released binaries are unsigned.</strong> Verify the published SHA-256 checksums.</li>
         </ul>
       </div>
     </div>
@@ -447,7 +473,7 @@ docker compose up -d</code>
 
 <footer>
   <div class="wrap foot">
-    <span>Secret Manager — v0.3.0</span>
+    <span>Secret Manager — v0.4.0</span>
     <span><a href="https://github.com/clement880101/secret-manager/blob/main/LICENSE">Apache&nbsp;2.0</a></span>
     <span><a href="https://github.com/clement880101/secret-manager">github.com/clement880101/secret-manager</a></span>
   </div>
