@@ -53,12 +53,18 @@ jobs:
 
       - name: Install dependencies
         working-directory: cli
+        shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-build.txt
 
+      # bash explicitly: the Windows runner defaults to PowerShell, where
+      # ${BINARY_NAME} is not the environment variable and expands to nothing,
+      # so the binary was built under the wrong name and the smoke test then
+      # could not find secretmgr.exe.
       - name: Build binary
         working-directory: cli
+        shell: bash
         run: pyinstaller --onefile --name "${BINARY_NAME}" cli.py
 
       # Neither command touches the network, so this stays honest on a runner
