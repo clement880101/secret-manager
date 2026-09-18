@@ -93,13 +93,8 @@ def _load_token() -> Optional[Dict[str, str]]:
         data = json.loads(TOKEN_FILE.read_text())
     except json.JSONDecodeError:
         return None
-    if "access_token" not in data:
+    if "access_token" not in data or "user_id" not in data:
         return None
-    # Tokens written before the GitHub flow was removed used "github_id".
-    if "user_id" not in data:
-        if "github_id" not in data:
-            return None
-        data["user_id"] = data["github_id"]
     return data
 
 
