@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import DateTime, Float, String, Text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from database import Base
+from database import Base, session_scope
 
 if TYPE_CHECKING:
     from secret_manager.models import Secret, Share
@@ -58,3 +59,25 @@ class LoginSession(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[float] = mapped_column(Float)
     completed_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+
+def ensure_user(github_id: str) -> None:
+    """Create the user row if it is missing, tolerating a concurrent creator.
+
+    Check-then-insert is not safe once more than one replica is serving
+    traffic: both see no row, both insert, and the loser gets an
+    IntegrityError. Every authenticated request runs this, so under
+    concurrency a user's first requests would fail with a 500.
+
+    The insert runs in its own transaction so that losing the race does not
+    poison the caller's, and a duplicate simply means someone else got there
+    first -- which is the outcome we wanted anyway.
+    """
+    with session_scope() as session:
+        if session.get(User, github_id) is not None:
+            return
+    try:
+        with session_scope() as session:
+            session.add(User(github_id=github_id))
+    except IntegrityError:
+        pass

@@ -8,11 +8,12 @@ from typing import Any, Dict, Literal, Tuple
 
 import httpx
 from fastapi import HTTPException
+from sqlalchemy import update
 
 import crypto
 import settings
 from database import session_scope
-from .models import LoginSession, User
+from .models import LoginSession, User, ensure_user
 
 
 STATE_TTL_SECONDS = 300
@@ -107,7 +108,22 @@ def _validate_state(state: str) -> str:
         if record is None or now - record.created_at > STATE_TTL_SECONDS:
             raise HTTPException(400, "Invalid or expired OAuth state")
         session_id = record.session_id
-        record.state = None
+
+        # Claim the state with a conditional UPDATE and insist it matched a row.
+        # Reading it and then clearing it is not enough: concurrent callbacks
+        # all read the same live state and all proceed, which defeats the CSRF
+        # protection the state exists to provide. The UPDATE is the
+        # serialization point -- a second transaction blocks on the row, then
+        # re-evaluates WHERE state = :state against the committed NULL and
+        # matches nothing. Portable across SQLite and Postgres, and it needs no
+        # SELECT ... FOR UPDATE, which SQLite ignores.
+        claimed = db.execute(
+            update(LoginSession)
+            .where(LoginSession.state == state)
+            .values(state=None)
+        ).rowcount
+        if claimed != 1:
+            raise HTTPException(400, "Invalid or expired OAuth state")
         return session_id
 
 
@@ -341,13 +357,7 @@ def fail_session(session_id: str, message: str) -> None:
     _set_session_error(session_id, message)
 
 
-def get_or_create_user(ext_user_id: str) -> User:
-    with session_scope() as session:
-        user = session.query(User).filter_by(github_id=ext_user_id).first()
-        if user:
-            return user
-        user = User(github_id=ext_user_id)
-        session.add(user)
-        session.flush()
-        return user
+def get_or_create_user(ext_user_id: str) -> None:
+    """Ensure the user exists. Safe to call from several replicas at once."""
+    ensure_user(ext_user_id)
 
