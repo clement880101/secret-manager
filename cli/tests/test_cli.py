@@ -27,18 +27,6 @@ class DummyResponse:
             raise AssertionError("raise_for_status should not be called for error responses in these tests.")
 
 
-def test_resolve_login_url_selects_first_known_key():
-    payload = {
-        "url": "https://example.com/fallback",
-        "auth_url": "https://example.com/auth",
-        "login_url": "https://example.com/login",
-        "verification_url": "https://example.com/verify",
-    }
-    assert cli._resolve_login_url(payload) == "https://example.com/verify"
-
-
-def test_resolve_login_url_returns_none_when_missing():
-    assert cli._resolve_login_url({"unexpected": "value"}) is None
 
 
 def test_write_and_load_token_roundtrip(monkeypatch, tmp_path):
@@ -49,7 +37,7 @@ def test_write_and_load_token_roundtrip(monkeypatch, tmp_path):
 
     stored = json.loads(token_file.read_text())
     assert stored["access_token"] == "token-123"
-    assert stored["github_id"] == "octocat"
+    assert stored["user_id"] == "octocat"
     assert isinstance(stored["created_at"], int)
 
     loaded = cli._load_token()
@@ -71,7 +59,7 @@ def test_logout_removes_token_file(monkeypatch, tmp_path):
     token_file = tmp_path / "token.json"
     monkeypatch.setattr(cli, "TOKEN_FILE", token_file)
 
-    token_file.write_text(json.dumps({"access_token": "abc", "github_id": "octocat", "created_at": 0}))
+    token_file.write_text(json.dumps({"access_token": "abc", "user_id": "octocat", "created_at": 0}))
 
     runner = CliRunner()
     result = runner.invoke(cli.app, ["logout"])
@@ -95,7 +83,7 @@ def test_commands_require_login_when_no_token(monkeypatch, tmp_path):
 def test_request_with_auth_attaches_bearer_token(monkeypatch):
     captured_headers = {}
 
-    def fake_ensure_token(scope=cli.DEFAULT_SCOPE):
+    def fake_ensure_token():
         return {"access_token": "secret-token"}
 
     def fake_request(method, url, **kwargs):
@@ -181,12 +169,12 @@ def test_loading_a_legacy_world_readable_token_repairs_it(monkeypatch, tmp_path)
 
     token_file = tmp_path / "token.json"
     monkeypatch.setattr(cli, "TOKEN_FILE", token_file)
-    token_file.write_text(json.dumps({"access_token": "abc", "github_id": "octocat"}))
+    token_file.write_text(json.dumps({"access_token": "abc", "user_id": "octocat"}))
     token_file.chmod(0o644)
 
     loaded = cli._load_token()
 
-    assert loaded["github_id"] == "octocat"
+    assert loaded["user_id"] == "octocat"
     assert stat_module.S_IMODE(token_file.stat().st_mode) == 0o600
 
 

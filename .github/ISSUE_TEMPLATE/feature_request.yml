@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest something this should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The problem, rather than the solution. It often has more than one answer.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Does this fit the project's constraints
+      options:
+        - label: It does not require a new runtime dependency, or the gain clearly justifies one
+        - label: It works without GitHub, or is optional for deployments that do not use it
+        - label: It works with more than one replica, or is documented as single-instance

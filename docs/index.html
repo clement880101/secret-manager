@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Secret Manager</title>
-<meta name="description" content="A lightweight, distributed secret manager. Pull the image and run it: it brings its own database and issues its own tokens. Nothing external required.">
+<meta name="description" content="A lightweight, distributed secret manager you run in your own cloud. It brings its own database and its own accounts. No identity provider, no outbound network access.">
 <meta property="og:title" content="Secret Manager">
 <meta property="og:description" content="A lightweight, distributed secret manager. One binary under 10MB, one container, any database.">
 <meta property="og:type" content="website">
@@ -252,9 +252,9 @@
 <main id="top">
 
   <div class="wrap hero hero-fade">
-    <p class="eyebrow">Lightweight &amp; distributed <span>/ self-hosted / v0.4.0</span></p>
+    <p class="eyebrow">Lightweight &amp; distributed <span>/ self-hosted / v0.5.0</span></p>
     <h1>A lightweight, distributed <span class="redact">secret</span> manager.</h1>
-    <p class="lede">Run it in your own cloud &mdash; AWS, GCP, a VPS, Kubernetes, anywhere that runs a container. It brings its own database and issues its own tokens, so there is nothing to register and nothing to connect.</p>
+    <p class="lede">Run it in your own cloud &mdash; AWS, GCP, a VPS, Kubernetes, anywhere that runs a container. It brings its own database and its own accounts, so there is no identity provider to wire up and nothing to reach out to.</p>
     <div class="pull">
       <code id="pullCmd">docker pull ghcr.io/clement880101/secret-manager</code>
       <button type="button" id="copyPull" aria-label="Copy the pull command">Copy</button>
@@ -310,7 +310,7 @@
 
       <div class="need">
         <h3>What you need</h3>
-        <p><strong>A container runtime. That is the whole list.</strong> No database to provision, no OAuth app to register, no certificate, no config file, no accounts created in advance. Then, depending on what you are doing:</p>
+        <p><strong>A container runtime. That is the whole list.</strong> No database to provision, no identity provider, no certificate, no config file, no accounts created in advance. Then, depending on what you are doing:</p>
         <table class="needs">
           <tr><td>Anything you would miss</td><td><code class="inline">SECRET_ENCRYPTION_KEY</code>, or values are stored unencrypted</td></tr>
           <tr><td>Clients on other machines</td><td><code class="inline">BACKEND_URL</code>, and TLS in front of it</td></tr>
@@ -355,7 +355,7 @@ docker compose up -d</code>
         <div class="step-card">
           <h3>Scale past one replica</h3>
           <p>Login state lives in the database, not in process memory, so a login can start on one instance and finish on another.</p>
-          <p>An OAuth state is claimed with a conditional <code class="inline">UPDATE</code>, so a replayed callback loses even when it arrives concurrently.</p>
+          <p>Rate-limit counters are shared too, so the limit is the limit rather than the limit multiplied by however many instances are running.</p>
         </div>
         <div class="step-card">
           <h3>Encrypt at rest</h3>
@@ -430,7 +430,7 @@ docker compose up -d</code>
         <div>
           <span class="n">STEP 01</span>
           <h3>Sign yourself up</h3>
-          <p><code class="inline">secretmgr register</code> creates an account on that deployment. No invitation, no GitHub. Close sign-ups with <code class="inline">ALLOW_REGISTRATION=false</code>, or configure a GitHub OAuth app to use browser logins instead.</p>
+          <p><code class="inline">secretmgr register</code> creates an account on that deployment. No invitation and no external account. Close sign-ups with <code class="inline">ALLOW_REGISTRATION=false</code> on anything facing the open internet.</p>
         </div>
         <div>
           <span class="n">STEP 02</span>
@@ -457,13 +457,14 @@ docker compose up -d</code>
         <tr><td>secretmgr register NAME</td><td>Create an account on this deployment and log in.</td></tr>
         <tr><td>secretmgr login NAME</td><td>Log in with your password.</td></tr>
         <tr><td>secretmgr login --token T</td><td>Log in with a token the server issued.</td></tr>
-        <tr><td>secretmgr login</td><td>Log in through GitHub, where the deployment is configured for it.</td></tr>
+        <tr><td>secretmgr passwd</td><td>Change your password.</td></tr>
+        <tr><td>secretmgr revoke TOKEN</td><td>Revoke a token, after losing a machine.</td></tr>
         <tr><td>secretmgr token USER</td><td>Issue a token for someone else.</td></tr>
         <tr><td>secretmgr whoami</td><td>Show who you are and how the deployment authenticates.</td></tr>
         <tr><td>secretmgr logout</td><td>Remove the stored token from this machine.</td></tr>
         <tr><td>secretmgr create KEY VALUE</td><td>Store a new secret you own.</td></tr>
         <tr><td>secretmgr list</td><td>List everything visible to you — what you own, plus what others have shared with you.</td></tr>
-        <tr><td>secretmgr share KEY GITHUB_ID</td><td>Give another GitHub user read access to one of your secrets.</td></tr>
+        <tr><td>secretmgr share KEY USER</td><td>Give a teammate read access to one of your secrets.</td></tr>
         <tr><td>secretmgr delete KEY</td><td>Delete a secret you own.</td></tr>
         <tr><td>secretmgr ping</td><td>Check that the backend is reachable.</td></tr>
         <tr><td>secretmgr version</td><td>Print the CLI version.</td></tr>
@@ -496,7 +497,7 @@ docker compose up -d</code>
 
 <footer>
   <div class="wrap foot">
-    <span>Secret Manager — v0.4.0</span>
+    <span>Secret Manager — v0.5.0</span>
     <span><a href="https://github.com/clement880101/secret-manager/blob/main/LICENSE">Apache&nbsp;2.0</a></span>
     <span><a href="https://github.com/clement880101/secret-manager">github.com/clement880101/secret-manager</a></span>
     <span><a href="https://clement880101.github.io/personal-web/">clement880101</a></span>

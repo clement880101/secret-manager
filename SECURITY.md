@@ -15,9 +15,7 @@ down until its operator opts out.
 | `SECRET_ENCRYPTION_KEY` | unset | Fernet key used to encrypt secret values before they reach the database. **Unset means values are stored in plaintext.** |
 | `ALLOWED_ORIGINS` | empty | Comma-separated CORS origins. Empty grants nothing, which is correct for a CLI-only deployment. A `*` entry drops credentials, since browsers reject that pairing. |
 | `ENABLE_API_DOCS` | `false` | Serves `/docs`, `/redoc` and `/openapi.json`. These describe every route to anyone who asks. |
-| `ENABLE_TEST_LOGIN` | `false` | Serves `POST /auth/login-test`, which swaps a GitHub PAT for a session. Needed by the integration suite; not an auth bypass, but a second way in. |
-| `TOKEN_CACHE_TTL_SECONDS` | `300` | How long a verified GitHub token is trusted before revalidation. `0` disables caching, giving immediate revocation at the cost of one GitHub API call per request. |
-| `BACKEND_URL` | — | Public base URL. Must match what clients call: GitHub redirects the OAuth callback here. |
+| `BACKEND_URL` | — | The public address clients reach. |
 
 Generate an encryption key with:
 
@@ -48,7 +46,7 @@ host. Silence it with `SECRETS_ALLOW_INSECURE=1` if you accept the risk.
 
 ## Client credential storage
 
-The CLI writes its GitHub access token to `~/.token` with mode `0600`, created
+The CLI writes its access token to `~/.token` with mode `0600`, created
 via `os.open` so it is never briefly world-readable. Tokens written by earlier
 builds were mode `0644`; the CLI repairs the mode when it next reads the file.
 
@@ -70,9 +68,6 @@ builds were mode `0644`; the CLI repairs the mode when it next reads the file.
   username can deliberately lock that account out for the window. The
   alternative — limiting only by address — lets a distributed attacker spray
   guesses freely, which is worse for a secret manager.
-- **Token verification is cached per process**, so a token revoked on GitHub
-  stays accepted for up to `TOKEN_CACHE_TTL_SECONDS` on each replica. Set it to
-  `0` where immediate revocation matters.
 - **SQLite is the default** and does not survive a container being replaced.
   Set `DB_URL` to Postgres for any real deployment; see `DEPLOYMENT.md`.
 - **Released binaries are unsigned.** Verify the published `SHA256SUMS`.

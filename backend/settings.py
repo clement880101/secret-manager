@@ -41,48 +41,6 @@ def docs_enabled() -> bool:
     return bool_env("ENABLE_API_DOCS", default=False)
 
 
-def test_login_enabled() -> bool:
-    """Whether to expose POST /auth/login-test.
-
-    That route swaps a GitHub personal access token for a session. It is how
-    the integration suite authenticates without a browser. It is not an
-    authentication bypass -- the token is still validated against GitHub --
-    but it is a second way in, so it stays off unless a deployment asks for it.
-    """
-    return bool_env("ENABLE_TEST_LOGIN", default=False)
-
-
-def token_cache_ttl_seconds() -> int:
-    """How long a verified GitHub token stays trusted before revalidation.
-
-    Without this the API calls GitHub once per request, which burns the
-    deployment's rate limit and lets an attacker amplify traffic against it.
-    Zero disables caching.
-    """
-    try:
-        return max(0, int(os.getenv("TOKEN_CACHE_TTL_SECONDS", "300")))
-    except ValueError:
-        return 300
-
-
-def auth_mode() -> str:
-    """Return "local" or "github".
-
-    Defaults to whichever the deployment is actually configured for, so that
-    pulling the image and running it works with no setup at all, while an
-    existing GitHub deployment keeps behaving exactly as before.
-
-    Explicit AUTH_MODE wins. Otherwise: GitHub if an OAuth app is configured,
-    local if not.
-    """
-    explicit = os.getenv("AUTH_MODE", "").strip().lower()
-    if explicit in {"local", "github"}:
-        return explicit
-    if os.getenv("OAUTH_ID_GITHUB") and os.getenv("OAUTH_SECRET_GITHUB"):
-        return "github"
-    return "local"
-
-
 def bootstrap_token() -> str:
     """A first token to hand out, instead of one generated at startup.
 

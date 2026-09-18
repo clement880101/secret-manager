@@ -8,9 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
-TOKENS = {"alice-token": 1111, "bob-token": 2222}
-ALICE = {"Authorization": "Bearer alice-token"}
-BOB = {"Authorization": "Bearer bob-token"}
+ALICE_NAME = "alice"
+BOB_NAME = "bob"
 
 
 def _reset_app_modules() -> None:
@@ -28,9 +27,6 @@ def _reset_app_modules() -> None:
 def client(monkeypatch, tmp_path):
     """Serve the secrets router against a fresh SQLite file with GitHub stubbed out."""
     monkeypatch.setenv("DB_URL", f"sqlite:///{tmp_path / 'secrets.db'}")
-    # This file exercises GitHub-token auth, so pin the mode rather than
-    # letting it be inferred from whether OAuth vars happen to be set.
-    monkeypatch.setenv("AUTH_MODE", "github")
 
     project_root = Path(__file__).resolve().parent.parent
     if str(project_root) not in sys.path:
@@ -39,51 +35,46 @@ def client(monkeypatch, tmp_path):
     _reset_app_modules()
 
     database = importlib.import_module("database")
-    auth_service = importlib.import_module("auth.service")
+    local = importlib.import_module("auth.local")
     secrets_router = importlib.import_module("secret_manager.router")
-
-    def fake_fetch(access_token, token_kind="oauth"):
-        user_id = TOKENS[access_token]
-        return {"id": user_id, "login": f"user{user_id}", "name": None, "avatar_url": None}
-
-    monkeypatch.setattr(auth_service, "fetch_github_user", fake_fetch)
-    assert secrets_router.service.session_scope.__wrapped__.__globals__["engine"].url.database == str(
-        tmp_path / "secrets.db"
-    ), "router is not wired to this test's database"
 
     database.init_db()
 
     app = FastAPI()
     app.include_router(secrets_router.router)
-    yield TestClient(app)
+    client = TestClient(app)
+    # Real tokens from the service itself, rather than a stubbed identity.
+    client.alice = {"Authorization": f"Bearer {local.issue_token(ALICE_NAME)}"}
+    client.bob = {"Authorization": f"Bearer {local.issue_token(BOB_NAME)}"}
+    yield client
 
     _reset_app_modules()
 
 
 def test_get_secret_returns_owned_secret(client):
-    assert client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=ALICE).status_code == 200
+    assert client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=client.alice).status_code == 200
 
-    response = client.get("/secrets/k1", headers=ALICE)
+    response = client.get("/secrets/k1", headers=client.alice)
 
     assert response.status_code == 200
-    assert response.json() == {"key": "k1", "value": "v1", "owner_id": "1111"}
+    assert response.json() == {"key": "k1", "value": "v1", "owner_id": ALICE_NAME}
 
 
 def test_get_secret_returns_shared_secret(client):
-    client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=ALICE)
-    assert client.post("/secrets/k1/share", json={"github_id": "2222"}, headers=ALICE).status_code == 200
+    client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=client.alice)
+    assert client.post("/secrets/k1/share", json={"user_id": BOB_NAME}, headers=client.alice).status_code == 200
 
-    response = client.get("/secrets/k1", headers=BOB)
+    response = client.get("/secrets/k1", headers=client.bob)
 
     assert response.status_code == 200
-    assert response.json() == {"key": "k1", "value": "v1", "owner_id": "1111"}
+    assert response.json() == {"key": "k1", "value": "v1", "owner_id": ALICE_NAME}
 
 
 def test_get_secret_hidden_from_unrelated_user(client):
-    client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=ALICE)
-    client.post("/secrets", json={"key": "k2", "value": "v2"}, headers=BOB)
+    client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=client.alice)
+    client.post("/secrets", json={"key": "k2", "value": "v2"}, headers=client.bob)
 
-    assert client.get("/secrets/k1", headers=BOB).status_code == 403
+    assert client.get("/secrets/k1", headers=client.bob).status_code == 403
 
 
 def test_get_secret_requires_auth(client):
@@ -91,14 +82,14 @@ def test_get_secret_requires_auth(client):
 
 
 def test_secret_lifecycle(client):
-    assert client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=ALICE).status_code == 200
-    assert client.post("/secrets", json={"key": "k1", "value": "v2"}, headers=ALICE).status_code == 409
+    assert client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=client.alice).status_code == 200
+    assert client.post("/secrets", json={"key": "k1", "value": "v2"}, headers=client.alice).status_code == 409
 
-    listed = client.get("/secrets", headers=ALICE)
+    listed = client.get("/secrets", headers=client.alice)
     assert listed.status_code == 200
-    assert listed.json() == {"items": [{"key": "k1", "value": "v1", "owner_id": "1111"}]}
+    assert listed.json() == {"items": [{"key": "k1", "value": "v1", "owner_id": ALICE_NAME}]}
 
-    assert client.delete("/secrets/k1", headers=BOB).status_code == 404
-    assert client.delete("/secrets/k1", headers=ALICE).status_code == 200
-    assert client.delete("/secrets/k1", headers=ALICE).status_code == 404
-    assert client.get("/secrets", headers=ALICE).json() == {"items": []}
+    assert client.delete("/secrets/k1", headers=client.bob).status_code == 404
+    assert client.delete("/secrets/k1", headers=client.alice).status_code == 200
+    assert client.delete("/secrets/k1", headers=client.alice).status_code == 404
+    assert client.get("/secrets", headers=client.alice).json() == {"items": []}

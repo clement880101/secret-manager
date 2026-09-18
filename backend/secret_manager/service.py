@@ -66,7 +66,7 @@ def list_visible(ext_user_id: str) -> List[dict]:
                 {
                     "key": secret.key,
                     "value": crypto.decrypt_value(secret.value),
-                    "owner_id": owner.github_id,
+                    "owner_id": owner.user_id,
                 }
             )
         return results

@@ -41,14 +41,20 @@ class CLIContext:
     def token_path(self) -> Path:
         return self.home / TOKEN_NAME
 
+    PASSWORD = "integration test password"
+
     def login(self, user_key: str) -> Dict[str, str]:
+        """Log in, registering the account the first time it is used."""
         if user_key not in self.tokens:
             raise KeyError(f"Unknown user key: {user_key}")
         if self.token_path.exists():
             self.token_path.unlink()
-        self.env["GH_ACCESS_TOKEN"] = self.tokens[user_key]
-        result = _run_cli(self.env, "login")
-        _ensure_success(result)
+        username = self.tokens[user_key]
+
+        result = _run_cli(self.env, "login", username, "--password", self.PASSWORD)
+        if result.returncode != 0:
+            result = _run_cli(self.env, "register", username, "--password", self.PASSWORD)
+            _ensure_success(result)
         return json.loads(self.token_path.read_text())
 
     def logout(self) -> None:
@@ -61,27 +67,33 @@ class CLIContext:
 
 @pytest.fixture(scope="session")
 def cli_context(tmp_path_factory):
+    """Two accounts, registered against the server under test.
+
+    These used to be two GitHub personal access tokens kept as repository
+    secrets. They expired, and the suite went red for a reason that had nothing
+    to do with the code. The service manages its own accounts now, so the suite
+    can create the identities it needs.
+    """
     load_dotenv()
-    token1 = os.environ.get("GH_ACCESS_TOKEN_1")
-    token2 = os.environ.get("GH_ACCESS_TOKEN_2")
-    if not token1 or not token2:
-        pytest.skip(
-            "GH_ACCESS_TOKEN_1 and GH_ACCESS_TOKEN_2 must be set (optionally via .env) to exercise the CLI binary."
-        )
 
     home_dir = tmp_path_factory.mktemp("cli-home")
     env = os.environ.copy()
     env["HOME"] = str(home_dir)
+    env["SECRETS_ALLOW_INSECURE"] = "1"
 
-    context = CLIContext(env=env, home=Path(home_dir), tokens={"user1": token1, "user2": token2})
+    suffix = uuid4().hex[:10]
+    context = CLIContext(
+        env=env,
+        home=Path(home_dir),
+        tokens={"user1": f"itest-one-{suffix}", "user2": f"itest-two-{suffix}"},
+    )
 
-    # Validate backend availability using user1 credentials
-    context.login("user1")
     ping_result = _run_cli(context.env, "ping")
     if ping_result.returncode != 0:
         pytest.skip(
-            "CLI backend is not reachable. Ensure the backend service is running before executing these tests."
+            "CLI backend is not reachable. Start the backend before running these tests."
         )
+    context.login("user1")
     context.logout()
 
     return context
@@ -112,7 +124,7 @@ def test_login_creates_token(cli_context: CLIContext):
 
     assert cli_context.token_path.exists()
     assert user_info.get("access_token"), "Token file missing access_token"
-    assert user_info.get("github_id"), "Token file missing github_id"
+    assert user_info.get("user_id"), "Token file missing user_id"
 
 
 def test_authentication_flow(cli_context: CLIContext):
@@ -121,7 +133,7 @@ def test_authentication_flow(cli_context: CLIContext):
         cli_context.token_path.unlink()
 
     user_info = cli_context.login("user1")
-    assert user_info.get("github_id"), "Login did not return github_id"
+    assert user_info.get("user_id"), "Login did not return user_id"
 
     list_result = _run_cli(cli_context.env, "list")
     _ensure_success(list_result)
@@ -173,7 +185,7 @@ def test_share_secret(ensure_user1, ensure_user2):
     context_user1.logout()
     context_user1.login("user1")
 
-    share_target = user2_info["github_id"]
+    share_target = user2_info["user_id"]
     secret_key = f"pytest-share-{uuid4().hex[:8]}"
     secret_value = "share-value"
 
@@ -197,11 +209,11 @@ def test_share_secret(ensure_user1, ensure_user2):
 def test_rbac_enforcement(cli_context: CLIContext):
     cli_context.logout()
     user1_info = cli_context.login("user1")
-    user1_id = user1_info["github_id"]
+    user1_id = user1_info["user_id"]
     cli_context.logout()
 
     user2_info = cli_context.login("user2")
-    user2_id = user2_info["github_id"]
+    user2_id = user2_info["user_id"]
     cli_context.logout()
 
     secret_key = f"pytest-rbac-{uuid4().hex[:8]}"
@@ -263,7 +275,7 @@ def test_rbac_enforcement(cli_context: CLIContext):
 
 def test_logout_removes_token(ensure_user1):
     context, user_info = ensure_user1
-    assert user_info.get("github_id")
+    assert user_info.get("user_id")
 
     logout_result = _run_cli(context.env, "logout")
     _ensure_success(logout_result)
