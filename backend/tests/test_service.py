@@ -15,7 +15,7 @@ def test_put_secret_creates_secret_and_user(service_modules):
         secret = session.scalars(select(Secret)).one()
         assert secret.key == "api_token"
         assert secret.value == "super-secret"
-        assert secret.owner.github_id == "alice"
+        assert secret.owner.user_id == "alice"
         assert session.get(User, "alice") is not None
 
 
@@ -86,7 +86,7 @@ def test_share_secret_is_idempotent_and_creates_user(service_modules):
         shares = session.scalars(select(Share)).all()
         assert len(shares) == 1
         share = shares[0]
-        assert share.user.github_id == "target"
+        assert share.user.user_id == "target"
         assert session.get(User, "target") is not None
 
 

@@ -39,7 +39,7 @@ def get_secret(request: Request, key: str):
 def share_secret(request: Request, key: str, payload: ShareIn):
     user_id = current_user_id(request)
     try:
-        service.share_secret(user_id, key, payload.github_id)
+        service.share_secret(user_id, key, payload.user_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return {"ok": True}

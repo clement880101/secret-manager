@@ -30,9 +30,6 @@ CONCURRENCY = 8
 def _load(monkeypatch, db_url):
     monkeypatch.setenv("DB_URL", db_url)
     monkeypatch.setenv("SECRET_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    monkeypatch.setenv("OAUTH_ID_GITHUB", "id")
-    monkeypatch.setenv("OAUTH_SECRET_GITHUB", "secret")
-    monkeypatch.setenv("BACKEND_URL", "https://api.example.com")
 
     project_root = Path(__file__).resolve().parent.parent
     if str(project_root) not in sys.path:
@@ -51,7 +48,7 @@ def _load(monkeypatch, db_url):
     secret_service = importlib.import_module("secret_manager.service")
     database.init_db()
     with database.session_scope() as db:
-        for table in ("shares", "secrets", "login_sessions", "users"):
+        for table in ("shares", "secrets", "api_tokens", "credentials", "auth_attempts", "users"):
             db.execute(text(f"DELETE FROM {table}"))
     return database, auth_service, secret_service, auth_models, secret_models
 
@@ -141,14 +138,3 @@ def test_concurrent_sharing_is_idempotent(pg):
     assert len(secret_service.list_visible("target")) == 1
 
 
-@requires_postgres
-def test_an_oauth_state_can_only_be_redeemed_once(pg):
-    """A replayed callback must lose, or the CSRF guard is decorative."""
-    _, auth_service, _, _, _ = pg
-    started = auth_service.initiate_login()
-    state = started["auth_url"].split("state=")[1].split("&")[0]
-
-    outcomes = _race(lambda i: auth_service._validate_state(state))
-
-    assert outcomes["ok"] == 1, outcomes
-    assert outcomes["HTTPException"] == CONCURRENCY - 1

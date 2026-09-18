@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 class User(Base):
     __tablename__ = "users"
 
-    github_id: Mapped[str] = mapped_column(String, primary_key=True)
+    # A username on this deployment. Named user_id because that is what it is.
+    user_id: Mapped[str] = mapped_column("github_id", String, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -31,37 +32,7 @@ class User(Base):
     )
 
 
-
-class LoginSession(Base):
-    """An in-progress or completed OAuth login.
-
-    Login state used to live in two module-level dicts, which meant it was lost
-    whenever the process restarted and was invisible to any other replica. That
-    made the service impossible to run with more than one instance, and it made
-    a routine redeploy break every login in flight. Keeping it in the database
-    lets the service be deployed anywhere, including platforms that move
-    containers around freely.
-    """
-
-    __tablename__ = "login_sessions"
-
-    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    # The OAuth state parameter, which guards against CSRF. Cleared once
-    # redeemed so a state cannot be replayed.
-    state: Mapped[Optional[str]] = mapped_column(String(128), unique=True, index=True, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="pending")
-    scope: Mapped[str] = mapped_column(String(255), default="")
-    # Encrypted with the same key as stored secrets: this is a live GitHub token.
-    access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    token_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    token_scope: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[float] = mapped_column(Float)
-    completed_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-
-
-def ensure_user(github_id: str) -> None:
+def ensure_user(user_id: str) -> None:
     """Create the user row if it is missing, tolerating a concurrent creator.
 
     Check-then-insert is not safe once more than one replica is serving
@@ -74,22 +45,17 @@ def ensure_user(github_id: str) -> None:
     first -- which is the outcome we wanted anyway.
     """
     with session_scope() as session:
-        if session.get(User, github_id) is not None:
+        if session.get(User, user_id) is not None:
             return
     try:
         with session_scope() as session:
-            session.add(User(github_id=github_id))
+            session.add(User(user_id=user_id))
     except IntegrityError:
         pass
 
 
 class ApiToken(Base):
-    """A bearer token this service issued itself.
-
-    Local mode exists so the service depends on nothing outside itself: no
-    OAuth app to register, no accounts on someone else's platform, and no
-    outbound network access. That is what makes "pull the image and run it"
-    actually true.
+    """A bearer token this service issued.
 
     Only the SHA-256 of the token is stored. A leaked database therefore does
     not hand over working credentials, and there is no way to display a token
@@ -99,7 +65,6 @@ class ApiToken(Base):
     __tablename__ = "api_tokens"
 
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    # Matches users.github_id, which in local mode is simply a user name.
     user_id: Mapped[str] = mapped_column(ForeignKey("users.github_id"), index=True)
     label: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[float] = mapped_column(Float)

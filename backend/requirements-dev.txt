@@ -1,3 +1,5 @@
 -r requirements-prod.txt
 pytest==9.0.1
+# fastapi's TestClient needs it; the application itself makes no HTTP calls.
+httpx==0.28.1
 

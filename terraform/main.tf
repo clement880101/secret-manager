@@ -37,8 +37,10 @@ resource "aws_ecr_repository" "api" {
   }
 }
 
+# Every replica must agree on the first token, or each mints its own on the way
+# up and only one of them is the one you were shown.
 resource "aws_secretsmanager_secret" "app" {
-  name                    = "secretmgr/app"
+  name                    = "secretmgr/bootstrap-token"
   recovery_window_in_days = 0
 }
 
@@ -195,19 +197,11 @@ resource "aws_ecs_task_definition" "api" {
       essential = true
       environment = [
         {
-          name  = "OAUTH_ID_GITHUB"
-          value = var.oauth_client_id
-        },
-        {
           # Must match what clients actually call, because GitHub redirects the
           # OAuth callback here. With HTTPS on, that is the CloudFront hostname.
           name  = "BACKEND_URL"
           value = local.api_base_url
         },
-        {
-          name  = "ENABLE_TEST_LOGIN"
-          value = var.enable_test_login ? "true" : "false"
-        }
       ]
       portMappings = [
         {
@@ -226,7 +220,7 @@ resource "aws_ecs_task_definition" "api" {
       }
       secrets = [
         {
-          name      = "OAUTH_SECRET_GITHUB"
+          name      = "BOOTSTRAP_TOKEN"
           valueFrom = aws_secretsmanager_secret.app.arn
         },
         {
