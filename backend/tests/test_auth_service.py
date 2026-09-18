@@ -139,8 +139,11 @@ def test_fetch_github_user_keeps_bearer_for_oauth(monkeypatch, auth_service_modu
     assert user["login"] == "oauth-user"
 
 
-def _build_auth_test_client(monkeypatch):
-    monkeypatch.setenv("DB_URL", "sqlite:///:memory:")
+def _build_auth_test_client(monkeypatch, tmp_path):
+    # A file rather than :memory: -- TestClient runs endpoints on worker
+    # threads, and an in-memory SQLite connection cannot cross threads. Login
+    # now writes to the database, so this path exercises that.
+    monkeypatch.setenv("DB_URL", f"sqlite:///{tmp_path / 'auth.db'}")
     monkeypatch.setenv("OAUTH_ID_GITHUB", "client-id-123")
     monkeypatch.setenv("OAUTH_SECRET_GITHUB", "super-secret")
     monkeypatch.setenv("BACKEND_URL", "https://backend.example.com")
@@ -150,16 +153,16 @@ def _build_auth_test_client(monkeypatch):
     if project_root_str not in sys.path:
         sys.path.insert(0, project_root_str)
 
-    modules_to_clear = [
-        "secret_manager.router",
-        "secret_manager.models",
-        "auth.router",
-        "auth.service",
-        "auth.models",
-        "database",
-    ]
-    for name in modules_to_clear:
-        sys.modules.pop(name, None)
+    # The packages go too, not just their submodules: `from auth import models`
+    # inside init_db resolves against the package attribute, so popping only
+    # "auth.models" hands back the previous module. Its tables then belong to a
+    # different Base and create_all() makes nothing.
+    for name in list(sys.modules):
+        if (
+            name in ("database", "crypto", "settings", "auth", "secret_manager")
+            or name.startswith(("auth.", "secret_manager."))
+        ):
+            del sys.modules[name]
 
     database = importlib.import_module("database")
     auth_router = importlib.import_module("auth.router")
@@ -172,8 +175,8 @@ def _build_auth_test_client(monkeypatch):
 
 
 @pytest.fixture()
-def auth_test_client(monkeypatch):
-    return _build_auth_test_client(monkeypatch)
+def auth_test_client(monkeypatch, tmp_path):
+    return _build_auth_test_client(monkeypatch, tmp_path)
 
 
 def test_login_route_returns_auth_link(auth_test_client):
