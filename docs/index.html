@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Secret Manager</title>
-<meta name="description" content="A lightweight, distributed secret manager. One binary under 10MB, one container, any database. Share secrets with other GitHub users.">
+<meta name="description" content="A lightweight, distributed secret manager. Pull the image and run it: it brings its own database and issues its own tokens. Nothing external required.">
 <meta property="og:title" content="Secret Manager">
 <meta property="og:description" content="A lightweight, distributed secret manager. One binary under 10MB, one container, any database.">
 <meta property="og:type" content="website">
@@ -219,7 +219,7 @@
   <div class="wrap hero hero-fade">
     <p class="eyebrow">Lightweight &amp; distributed <span>/ GitHub-authenticated / v0.3.0</span></p>
     <h1>A lightweight, distributed <span class="redact">secret</span> manager.</h1>
-    <p class="lede">Store a key, share it with a teammate by their GitHub account, pull it back on another machine. A binary under 10&nbsp;MB and one container you can run anywhere &mdash; across as many replicas as you like.</p>
+    <p class="lede">Pull the image and run it. It brings its own database and issues its own tokens, so there is nothing to register and nothing to connect &mdash; and it still scales across as many replicas as you like.</p>
     <div class="cta-row">
       <a class="btn" href="#download" id="heroDownload">Download the CLI</a>
       <a class="btn ghost" href="#deploy">Run your own</a>
@@ -228,7 +228,7 @@
 
   <div class="wrap stats">
     <div><b>&lt;10 MB</b><span>single binary, no runtime</span></div>
-    <div><b>Batteries in</b><span>SQLite bundled, Postgres optional</span></div>
+    <div><b>Zero setup</b><span>own accounts, own database</span></div>
     <div><b>N replicas</b><span>no state in process memory</span></div>
     <div><b>Apache 2.0</b><span>self-host the whole thing</span></div>
   </div>
@@ -242,23 +242,20 @@
       </div>
       <div class="term">
         <div class="term-bar"><i></i><i></i><i></i><b>secretmgr</b></div>
-        <div class="term-body"><pre><span class="p">$</span> <span class="c">secretmgr login</span>
-<span class="o">Open the following link in a browser to continue:</span>
-<span class="o">https://github.com/login/oauth/authorize?client_id=...</span>
-<span class="o">Waiting for authentication...</span>
-<span class="hl">Logged in as 1111</span>
+        <div class="term-body"><pre><span class="p">$</span> <span class="c">docker run -d -p 8000:8000 -v secretmgr-data:/data \</span>
+<span class="c">    ghcr.io/clement880101/secret-manager:latest</span>
+<span class="o">No API tokens existed, so one was created for user 'admin'.</span>
+<span class="hl">    smt_sGQr0f3dFBP39sUNBm2jpwZ6tnZyFms-dLPcIUp6SwE</span>
+
+<span class="p">$</span> <span class="c">secretmgr register alice</span>
+<span class="o">Choose a password:</span>
+<span class="hl">Registered and logged in as alice</span>
 
 <span class="p">$</span> <span class="c">secretmgr create db-pw hunter2</span>
 <span class="hl">Stored secret `db-pw`.</span>
 
-<span class="p">$</span> <span class="c">secretmgr share db-pw 2222</span>
-<span class="hl">Granted access to `db-pw` for 2222.</span>
-
-<span class="p">$</span> <span class="c">secretmgr list</span>
-<span class="hl">db-pw = hunter2 (owner: 1111)</span>
-
-<span class="p">$</span> <span class="c">secretmgr delete db-pw</span>
-<span class="hl">Deleted secret `db-pw`.</span></pre></div>
+<span class="p">$</span> <span class="c">secretmgr share db-pw bob</span>
+<span class="hl">Granted access to `db-pw` for bob.</span></pre></div>
       </div>
     </div>
   </section>
@@ -323,14 +320,11 @@
         <div>
           <span class="n">OPTION 01</span>
           <h3>Docker</h3>
-          <p>The database ships with it &mdash; nothing else to run. Published for <code class="inline">amd64</code> and <code class="inline">arm64</code>.</p>
+          <p>That is the whole setup. It brings its own database and issues its own tokens. Published for <code class="inline">amd64</code> and <code class="inline">arm64</code>.</p>
           <code class="cmd">docker run -d -p 8000:8000 \
   -v secretmgr-data:/data \
-  -e BACKEND_URL=https://secrets.example.com \
-  -e OAUTH_ID_GITHUB=... \
-  -e OAUTH_SECRET_GITHUB=... \
-  -e SECRET_ENCRYPTION_KEY=... \
   ghcr.io/clement880101/secret-manager:latest</code>
+          <p>For anything real, add <code class="inline">SECRET_ENCRYPTION_KEY</code> to encrypt values at rest and <code class="inline">BACKEND_URL</code> for the address clients reach.</p>
         </div>
         <div>
           <span class="n">OPTION 02</span>
@@ -381,8 +375,8 @@ docker compose up -d</code>
       <div class="flow">
         <div>
           <span class="n">STEP 01</span>
-          <h3>Sign in with GitHub</h3>
-          <p>The CLI opens a GitHub authorization page and waits. Your GitHub account is the identity — there is no separate password to create.</p>
+          <h3>Sign yourself up</h3>
+          <p><code class="inline">secretmgr register</code> creates an account on that deployment. No invitation, no GitHub. Close sign-ups with <code class="inline">ALLOW_REGISTRATION=false</code>, or configure a GitHub OAuth app to use browser logins instead.</p>
         </div>
         <div>
           <span class="n">STEP 02</span>
@@ -391,8 +385,8 @@ docker compose up -d</code>
         </div>
         <div>
           <span class="n">STEP 03</span>
-          <h3>Share by GitHub ID</h3>
-          <p>Grant read access using the recipient's numeric GitHub user ID. They see the secret in their own <code class="inline">list</code>; only you can delete or re-share it.</p>
+          <h3>Share with a teammate</h3>
+          <p>Grant read access by whatever name you issued their token under. They see it in their own <code class="inline">list</code>; only you can delete or re-share it.</p>
         </div>
       </div>
     </div>
@@ -406,7 +400,12 @@ docker compose up -d</code>
         <h2>Commands</h2>
       </div>
       <table class="cmds">
-        <tr><td>secretmgr login</td><td>Authenticate with GitHub and store the access token in <code class="inline">~/.token</code>.</td></tr>
+        <tr><td>secretmgr register NAME</td><td>Create an account on this deployment and log in.</td></tr>
+        <tr><td>secretmgr login NAME</td><td>Log in with your password.</td></tr>
+        <tr><td>secretmgr login --token T</td><td>Log in with a token the server issued.</td></tr>
+        <tr><td>secretmgr login</td><td>Log in through GitHub, where the deployment is configured for it.</td></tr>
+        <tr><td>secretmgr token USER</td><td>Issue a token for someone else.</td></tr>
+        <tr><td>secretmgr whoami</td><td>Show who you are and how the deployment authenticates.</td></tr>
         <tr><td>secretmgr logout</td><td>Remove the stored token from this machine.</td></tr>
         <tr><td>secretmgr create KEY VALUE</td><td>Store a new secret you own.</td></tr>
         <tr><td>secretmgr list</td><td>List everything visible to you — what you own, plus what others have shared with you.</td></tr>
@@ -433,6 +432,8 @@ docker compose up -d</code>
           <li><strong>Encryption at rest is opt-in.</strong> Without <code class="inline">SECRET_ENCRYPTION_KEY</code> the backend stores values unencrypted and says so in its logs.</li>
           <li><strong>The released binaries are unsigned.</strong> Verify the published SHA-256 checksums if that matters to you.</li>
           <li><strong>TLS is your platform's job.</strong> The CLI warns when <code class="inline">BACKEND_URL</code> is plain HTTP to anything other than localhost.</li>
+          <li><strong>Anyone who can reach the service can sign up</strong> by default. An account only ever sees its own secrets plus what is shared with it, but set <code class="inline">ALLOW_REGISTRATION=false</code> on anything facing the open internet.</li>
+          <li><strong>Tokens do not expire on their own.</strong> Only their SHA-256 is stored, so a leaked database is not a set of working credentials, but revoke deliberately when someone leaves.</li>
         </ul>
       </div>
     </div>

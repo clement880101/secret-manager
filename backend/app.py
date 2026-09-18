@@ -14,6 +14,13 @@ from secret_manager import router as secrets_router
 init_db()
 crypto.warn_if_plaintext()
 
+# In local mode a fresh deployment has no way in until a token exists, so make
+# one and print it. Does nothing once any token is present.
+if settings.auth_mode() == "local":
+    from auth.local import ensure_bootstrap_token
+
+    ensure_bootstrap_token()
+
 
 # The interactive docs and the schema describe every route to anyone who asks,
 # so they are opt-in rather than on by default.

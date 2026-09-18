@@ -254,19 +254,155 @@ def main() -> None:
     _warn_if_insecure()
 
 
+def _login_with_api_token(token: str) -> Dict[str, str]:
+    """Store a token the server issued, after confirming who it identifies."""
+    token = token.strip()
+    if not token:
+        typer.echo("Token is empty.")
+        raise typer.Exit(1)
+    try:
+        response = httpx.get(
+            f"{API_URL}/auth/whoami",
+            headers=_auth_headers(token),
+            timeout=HTTP_TIMEOUT,
+        )
+    except httpx.RequestError as exc:
+        typer.echo(f"Unable to reach API at {API_URL}: {exc}")
+        raise typer.Exit(1)
+    if response.status_code == 401:
+        typer.echo("That token was rejected. It may have been revoked.")
+        raise typer.Exit(1)
+    response.raise_for_status()
+    user_id = response.json().get("user_id")
+    if not user_id:
+        typer.echo("Server did not say who this token belongs to.")
+        raise typer.Exit(1)
+    _write_token(token, user_id)
+    typer.echo(f"Logged in as {user_id}")
+    return {"access_token": token, "github_id": user_id}
+
+
+def _post_credentials(path: str, username: str, password: str) -> Dict[str, str]:
+    """Send a username and password, store whatever token comes back."""
+    try:
+        response = httpx.post(
+            f"{API_URL}{path}",
+            json={"username": username, "password": password},
+            timeout=HTTP_TIMEOUT,
+        )
+    except httpx.RequestError as exc:
+        typer.echo(f"Unable to reach API at {API_URL}: {exc}")
+        raise typer.Exit(1)
+
+    if response.status_code in (400, 401, 403):
+        detail = ""
+        try:
+            detail = response.json().get("detail", "")
+        except ValueError:
+            pass
+        typer.echo(detail or "Login failed.")
+        raise typer.Exit(1)
+    if response.status_code == 404:
+        typer.echo(
+            "This deployment does not manage its own accounts. "
+            "Run `secretmgr login` to sign in through GitHub."
+        )
+        raise typer.Exit(1)
+    response.raise_for_status()
+
+    payload = response.json()
+    _write_token(payload["token"], payload["user_id"])
+    return payload
+
+
 @app.command()
-def login(scope: str = typer.Option(DEFAULT_SCOPE, help="GitHub OAuth scopes to request")):
+def register(
+    username: str = typer.Argument(..., help="The name to register."),
+    password: str = typer.Option(
+        None, "--password", help="Skip the prompt. Avoid on shared machines: it lands in shell history."
+    ),
+):
     """
-    Initiate the login flow and store the resulting access token.
+    Create an account on this deployment and log in.
+
+    No GitHub account and no invitation required, where the deployment allows
+    it.
+    """
+    if password is None:
+        password = typer.prompt("Choose a password", hide_input=True, confirmation_prompt=True)
+    payload = _post_credentials("/auth/register", username, password)
+    typer.echo(f"Registered and logged in as {payload['user_id']}")
+
+
+@app.command()
+def login(
+    username: str = typer.Argument(None, help="Your username on this deployment."),
+    password: str = typer.Option(
+        None, "--password", help="Skip the prompt. Avoid on shared machines: it lands in shell history."
+    ),
+    token: str = typer.Option(
+        None, "--token", help="Log in with a token the server issued."
+    ),
+    scope: str = typer.Option(DEFAULT_SCOPE, help="GitHub OAuth scopes to request"),
+):
+    """
+    Log in and store the resulting token.
+
+    Give a username to sign in with a password, --token to use a token the
+    server issued, or neither to go through GitHub where the deployment is
+    configured for it.
     """
     if TOKEN_FILE.exists():
         typer.echo("Existing session detected; starting fresh login.")
         TOKEN_FILE.unlink()
+
+    if token:
+        _login_with_api_token(token)
+        return
+
+    if username:
+        if password is None:
+            password = typer.prompt("Password", hide_input=True)
+        payload = _post_credentials("/auth/sessions", username, password)
+        typer.echo(f"Logged in as {payload['user_id']}")
+        return
+
     gh_access_token = os.environ.get("GH_ACCESS_TOKEN")
     if gh_access_token:
         _login_with_access_token(gh_access_token)
         return
     _start_login(scope)
+
+
+@app.command("token")
+def issue_token(
+    user_id: str = typer.Argument(..., help="Who the new token is for."),
+    label: str = typer.Option("", "--label", help="A note to identify it later."),
+):
+    """
+    Issue a token for someone else, so they can use this deployment.
+    """
+    response = _request_with_auth(
+        "POST", "/auth/tokens", json={"user_id": user_id, "label": label}
+    )
+    if response.status_code == 404:
+        typer.echo("This deployment uses GitHub logins, so it does not issue tokens.")
+        raise typer.Exit(1)
+    response.raise_for_status()
+    payload = response.json()
+    typer.echo(f"Token for {payload['user_id']}:\n\n    {payload['token']}\n")
+    typer.echo("It cannot be shown again. Share it over something private.")
+
+
+@app.command()
+def whoami():
+    """
+    Show who the stored token identifies, and how this deployment authenticates.
+    """
+    response = _request_with_auth("GET", "/auth/whoami")
+    response.raise_for_status()
+    payload = response.json()
+    typer.echo(f"{payload['user_id']} (auth: {payload.get('auth_mode', 'unknown')})")
 
 
 @app.command()

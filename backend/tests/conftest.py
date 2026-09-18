@@ -50,6 +50,8 @@ def service_modules(monkeypatch):
 def auth_service_module(monkeypatch):
     """Reload auth service against an in-memory SQLite database for isolation."""
     monkeypatch.setenv("DB_URL", "sqlite:///:memory:")
+    # These tests stub GitHub, so they are about github mode specifically.
+    monkeypatch.setenv("AUTH_MODE", "github")
 
     project_root = Path(__file__).resolve().parent.parent
     project_root_str = str(project_root)
