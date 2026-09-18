@@ -28,7 +28,11 @@ jobs:
             target: linux-x86_64
           - runner: ubuntu-24.04-arm
             target: linux-arm64
-          - runner: macos-13
+          # macos-13 was GitHub's last free Intel image and was retired on
+          # 2025-12-04; jobs targeting it queue forever. macos-15-intel is the
+          # replacement and is scheduled to last until August 2027, after which
+          # GitHub-hosted x86_64 macOS goes away entirely.
+          - runner: macos-15-intel
             target: macos-x86_64
           - runner: macos-latest
             target: macos-arm64
