@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import DateTime, Float, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -81,3 +81,45 @@ def ensure_user(github_id: str) -> None:
             session.add(User(github_id=github_id))
     except IntegrityError:
         pass
+
+
+class ApiToken(Base):
+    """A bearer token this service issued itself.
+
+    Local mode exists so the service depends on nothing outside itself: no
+    OAuth app to register, no accounts on someone else's platform, and no
+    outbound network access. That is what makes "pull the image and run it"
+    actually true.
+
+    Only the SHA-256 of the token is stored. A leaked database therefore does
+    not hand over working credentials, and there is no way to display a token
+    again after it is issued.
+    """
+
+    __tablename__ = "api_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # Matches users.github_id, which in local mode is simply a user name.
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.github_id"), index=True)
+    label: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class Credential(Base):
+    """A username and password for a user of this deployment.
+
+    Deliberately a table of its own rather than a column on User. There is no
+    migration step in this project -- create_all() adds missing tables but will
+    not add a column to one that already exists -- so a new table is the change
+    that applies cleanly to databases that are already out there.
+
+    A user may have no row here: tokens issued by an administrator work without
+    a password, and GitHub-mode users never have one.
+    """
+
+    __tablename__ = "credentials"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.github_id"), primary_key=True)
+    # scrypt, encoded with its parameters and salt. See auth.passwords.
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[float] = mapped_column(Float)

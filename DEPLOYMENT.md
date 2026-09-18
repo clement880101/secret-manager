@@ -13,11 +13,17 @@ being deployed. Put it behind whatever your platform provides.
 
 Everything is environment variables. Nothing is baked into the image.
 
+Nothing here is required to start. The service brings its own database and
+issues its own tokens, so `docker run` with no environment at all works.
+
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `BACKEND_URL` | yes | The public URL clients reach, including scheme. GitHub redirects the OAuth callback here, so it must match your real address. |
-| `OAUTH_ID_GITHUB` | yes | GitHub OAuth app client ID. |
-| `OAUTH_SECRET_GITHUB` | yes | GitHub OAuth app client secret. |
+| `AUTH_MODE` | no | `local` or `github`. Defaults to `github` when an OAuth app is configured, `local` otherwise. |
+| `ALLOW_REGISTRATION` | no | Whether anyone reaching the service may sign up. Default `true`. |
+| `BOOTSTRAP_TOKEN` | no | Local mode: the first token, instead of one generated at startup. |
+| `BACKEND_URL` | github mode | The public URL clients reach, including scheme. GitHub redirects the OAuth callback here, so it must match your real address. |
+| `OAUTH_ID_GITHUB` | github mode | GitHub OAuth app client ID. |
+| `OAUTH_SECRET_GITHUB` | github mode | GitHub OAuth app client secret. |
 | `SECRET_ENCRYPTION_KEY` | strongly recommended | Fernet key. **Without it, secret values are stored unencrypted.** |
 | `DB_URL` | no | SQLAlchemy URL. Defaults to local SQLite. Use Postgres for anything real. |
 | `ENABLE_API_DOCS` | no | Serve `/docs` and `/openapi.json`. Default `false`. |
@@ -32,8 +38,53 @@ docker run --rm ghcr.io/clement880101/secret-manager:latest \
   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Create the GitHub OAuth app at <https://github.com/settings/developers> and set
-its callback URL to `<BACKEND_URL>/auth/callback`.
+## Choosing how people log in
+
+**Local (the default when no OAuth app is configured).** The service manages its
+own accounts. People sign themselves up:
+
+```bash
+secretmgr register alice          # prompts for a password
+secretmgr login alice             # from any other machine
+```
+
+Passwords are hashed with scrypt from the standard library — no extra
+dependency — and are never stored in any recoverable form. Set
+`ALLOW_REGISTRATION=false` to close sign-ups on a deployment reachable from the
+open internet; an administrator can then provision access with
+`secretmgr token <name>`.
+
+There is also always a way in without a password. On first start the service
+creates a token and writes it to the log:
+
+```
+No API tokens existed, so one was created for user 'admin'.
+This is shown once and cannot be recovered:
+
+    smt_sGQr0f3dFBP39sUNBm2jpwZ6tnZyFms-dLPcIUp6SwE
+```
+
+Set `BOOTSTRAP_TOKEN` to choose it yourself, which is easier on immutable
+platforms or where logs are awkward to read. Then:
+
+```bash
+secretmgr login --token smt_...
+secretmgr token alice --label laptop   # issue one for a teammate
+```
+
+Only the SHA-256 of a token is stored, so a copy of the database is not a set
+of working credentials, and a token cannot be shown again after it is issued.
+Tokens do not expire on their own — revoke deliberately.
+
+**GitHub.** Set `OAUTH_ID_GITHUB` and `OAUTH_SECRET_GITHUB` and the service
+switches: `secretmgr login` opens a browser, identities are GitHub user IDs,
+and the token routes disappear. Create the OAuth app at
+<https://github.com/settings/developers> with callback URL
+`<BACKEND_URL>/auth/callback`.
+
+The trade is no tokens to hand out and no accounts to administer, against every
+user needing a GitHub account and the server needing outbound access to
+`api.github.com`. Local mode needs neither, which is why it is the default.
 
 ## Choosing a database
 
@@ -58,12 +109,15 @@ Tables are created on startup; there is no migration step to run.
 ```bash
 docker run -d --name secret-manager -p 8000:8000 \
   -v secretmgr-data:/data \
-  -e BACKEND_URL=https://secrets.example.com \
-  -e OAUTH_ID_GITHUB=... \
-  -e OAUTH_SECRET_GITHUB=... \
-  -e SECRET_ENCRYPTION_KEY=... \
-  -e DB_URL=postgresql+psycopg://user:pass@db:5432/secretmgr \
   ghcr.io/clement880101/secret-manager:latest
+```
+
+That is enough to have a working deployment. For anything real, add:
+
+```bash
+  -e SECRET_ENCRYPTION_KEY=...   # encrypt values at rest
+  -e BACKEND_URL=https://secrets.example.com
+  -e DB_URL=postgresql+psycopg://user:pass@db:5432/secretmgr
 ```
 
 The image is published for `linux/amd64` and `linux/arm64`.
