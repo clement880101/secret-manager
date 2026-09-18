@@ -124,6 +124,32 @@ a network load balancer, and CloudFront for TLS). It is one option among the
 above, not the supported path — the container runs anywhere, and most platforms
 need far less setup.
 
+## Running more than one replica
+
+Supported, on Postgres. Everything a request needs is in the database rather
+than in process memory, so requests can land on any instance:
+
+- Login state (the OAuth `state`, the pending session, the issued token) lives
+  in `login_sessions`, so a login can start on one replica and finish on
+  another.
+- An OAuth `state` is claimed with a conditional `UPDATE` and is redeemed
+  exactly once, so a replayed callback loses even if it arrives concurrently.
+- Creating a user and sharing a secret are both idempotent under concurrent
+  writers.
+
+Two caveats worth knowing:
+
+- **Use Postgres.** SQLite serialises writers and does not survive a container
+  being replaced, so it cannot back more than one instance.
+- **Token verification is cached per process** (`TOKEN_CACHE_TTL_SECONDS`,
+  default 300s). Each replica keeps its own cache, so a token revoked on GitHub
+  can stay accepted for up to that long on each. Set it to `0` if you need
+  revocation to take effect immediately.
+
+The concurrency behaviour is covered by tests that run against a real Postgres.
+They skip unless `TEST_POSTGRES_URL` is set, because SQLite would report success
+for code that is not actually safe.
+
 ## Upgrading
 
 Pull the new image and restart. Tables are created on startup and existing rows
