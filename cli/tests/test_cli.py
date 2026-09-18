@@ -218,3 +218,25 @@ def test_insecure_warning_is_emitted_for_remote_http(monkeypatch, capsys):
     cli._warn_if_insecure()
 
     assert "plain HTTP" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_empty_backend_url_falls_back_to_the_default(monkeypatch, value):
+    """A repository variable that is undefined expands to "" in CI."""
+    monkeypatch.setenv("BACKEND_URL", value)
+    reloaded = importlib.reload(cli)
+    try:
+        assert reloaded.API_URL == reloaded.DEFAULT_BACKEND_URL
+    finally:
+        monkeypatch.delenv("BACKEND_URL", raising=False)
+        importlib.reload(cli)
+
+
+def test_backend_url_override_is_honoured_and_stripped(monkeypatch):
+    monkeypatch.setenv("BACKEND_URL", "https://api.example.com/")
+    reloaded = importlib.reload(cli)
+    try:
+        assert reloaded.API_URL == "https://api.example.com"
+    finally:
+        monkeypatch.delenv("BACKEND_URL", raising=False)
+        importlib.reload(cli)

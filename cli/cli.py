@@ -17,7 +17,11 @@ if DOTENV_PATH.exists():
 
 app = typer.Typer(add_completion=False)
 
-API_URL = os.environ.get("BACKEND_URL", "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000").rstrip("/")
+DEFAULT_BACKEND_URL = "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000"
+# An env var that is set but empty must fall back to the default rather than
+# producing a hostless URL. CI passes BACKEND_URL from a repository variable,
+# which expands to "" on a fork that has not defined one.
+API_URL = (os.environ.get("BACKEND_URL") or "").strip().rstrip("/") or DEFAULT_BACKEND_URL
 DEFAULT_SCOPE = "read:user user:email"
 SESSION_TTL_SECONDS = 600
 POLL_INTERVAL_SECONDS = 3.0
