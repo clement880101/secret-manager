@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Secret Manager</title>
-<meta name="description" content="A command-line secret manager. Store secrets, share them with other GitHub users, authenticate with your GitHub account.">
+<meta name="description" content="A lightweight, distributed secret manager. One binary under 10MB, one container, any database. Share secrets with other GitHub users.">
 <meta property="og:title" content="Secret Manager">
-<meta property="og:description" content="A command-line secret manager. Store secrets, share them with other GitHub users, authenticate with your GitHub account.">
+<meta property="og:description" content="A lightweight, distributed secret manager. One binary under 10MB, one container, any database.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2218%22 fill=%22%2308090b%22/><rect x=%2222%22 y=%2246%22 width=%2256%22 height=%2216%22 fill=%22%23ffb000%22/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,6 +101,13 @@
   .hero-fade>*:nth-child(4){animation-delay:.4s}
   @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 
+  /* ---------- stat strip ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line-strong);border:1px solid var(--line-strong);margin-bottom:clamp(8px,2vw,24px)}
+  .stats>div{background:var(--ink);padding:clamp(18px,2.2vw,26px);display:flex;flex-direction:column;gap:6px}
+  .stats b{font-family:var(--display);font-weight:600;font-size:clamp(19px,2.3vw,27px);letter-spacing:-.02em;color:var(--amber)}
+  .stats span{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--muted);line-height:1.5}
+  @media(max-width:820px){.stats{grid-template-columns:repeat(2,1fr)}}
+
   /* ---------- section chrome ---------- */
   section{padding-block:clamp(56px,8vw,104px);border-top:1px solid var(--line)}
   .sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:clamp(28px,4vw,46px);flex-wrap:wrap}
@@ -147,7 +154,10 @@
   .step-card p{margin:0 0 12px;font-size:15px;color:#c6c0b4}
   .step-card p:last-child{margin-bottom:0}
   code.inline{font-family:var(--mono);font-size:.85em;background:var(--ink-3);border:1px solid var(--line);padding:2px 7px;color:var(--paper);white-space:nowrap}
-  .cmd{display:block;font-family:var(--mono);font-size:12.5px;background:var(--ink-2);border:1px solid var(--line);border-left:2px solid var(--amber);padding:12px 14px;overflow-x:auto;color:#dfd7c6;margin:0 0 10px}
+  .cmd{display:block;font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--ink-2);border:1px solid var(--line);border-left:2px solid var(--amber);padding:12px 14px;overflow-x:auto;color:#dfd7c6;margin:0 0 10px;white-space:pre}
+  /* Two columns here: shell commands do not fit in a third of the width. */
+  .flow.two{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:900px){.flow.two{grid-template-columns:1fr}}
 
   /* ---------- steps ---------- */
   /* Same reason as .dl-grid: three cards, so never an in-between column count. */
@@ -197,8 +207,8 @@
     <a class="brand" href="#top"><i></i> Secret&nbsp;Manager</a>
     <nav class="nav-links">
       <a href="#download">Download</a>
+      <a href="#deploy">Self-host</a>
       <a href="#how" class="hide-sm">How it works</a>
-      <a href="#commands" class="hide-sm">Commands</a>
       <a href="https://github.com/clement880101/secret-manager">Source</a>
     </nav>
   </div>
@@ -207,13 +217,20 @@
 <main id="top">
 
   <div class="wrap hero hero-fade">
-    <p class="eyebrow">Command-line vault <span>/ GitHub-authenticated / v0.2.0</span></p>
-    <h1>Keep your <span class="redact">secrets</span> on the command line.</h1>
-    <p class="lede">Store a key, share it with a teammate by their GitHub account, pull it back on another machine. One binary, no runtime to install.</p>
+    <p class="eyebrow">Lightweight &amp; distributed <span>/ GitHub-authenticated / v0.3.0</span></p>
+    <h1>A lightweight, distributed <span class="redact">secret</span> manager.</h1>
+    <p class="lede">Store a key, share it with a teammate by their GitHub account, pull it back on another machine. A binary under 10&nbsp;MB and one container you can run anywhere &mdash; across as many replicas as you like.</p>
     <div class="cta-row">
       <a class="btn" href="#download" id="heroDownload">Download the CLI</a>
-      <a class="btn ghost" href="https://github.com/clement880101/secret-manager">Read the source</a>
+      <a class="btn ghost" href="#deploy">Run your own</a>
     </div>
+  </div>
+
+  <div class="wrap stats">
+    <div><b>&lt;10 MB</b><span>single binary, no runtime</span></div>
+    <div><b>Any DB</b><span>SQLite or Postgres</span></div>
+    <div><b>N replicas</b><span>no state in process memory</span></div>
+    <div><b>Apache 2.0</b><span>self-host the whole thing</span></div>
   </div>
 
   <!-- ===== terminal ===== -->
@@ -293,11 +310,72 @@
     </div>
   </section>
 
+  <!-- ===== self-host ===== -->
+  <section id="deploy">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">03</span>
+        <h2>Run your own</h2>
+      </div>
+      <p class="sec-note">One stateless container on port 8000, configured entirely through environment variables. It does not terminate TLS &mdash; whatever you put in front of it already does, which is what lets it run anywhere.</p>
+
+      <div class="flow two" style="margin-bottom:26px">
+        <div>
+          <span class="n">OPTION 01</span>
+          <h3>Docker</h3>
+          <p>Published for <code class="inline">amd64</code> and <code class="inline">arm64</code>.</p>
+          <code class="cmd">docker run -d -p 8000:8000 \
+  -e BACKEND_URL=https://secrets.example.com \
+  -e OAUTH_ID_GITHUB=... \
+  -e OAUTH_SECRET_GITHUB=... \
+  -e SECRET_ENCRYPTION_KEY=... \
+  -e DB_URL=postgresql+psycopg://... \
+  ghcr.io/clement880101/secret-manager:latest</code>
+        </div>
+        <div>
+          <span class="n">OPTION 02</span>
+          <h3>Compose</h3>
+          <p>The API and a Postgres with a persistent volume, together.</p>
+          <code class="cmd">git clone https://github.com/clement880101/secret-manager
+cd secret-manager/deploy
+cp .env.example .env   # fill it in
+docker compose up -d</code>
+        </div>
+      </div>
+
+      <div class="after">
+        <div class="step-card">
+          <h3>Anywhere else</h3>
+          <p>Fly.io, Render, Railway, Cloud Run, Azure Container Apps and Kubernetes all build from the same Dockerfile, and terminate TLS for you.</p>
+          <p><a href="https://github.com/clement880101/secret-manager/blob/main/DEPLOYMENT.md" style="color:var(--amber)">Full deployment guide &rarr;</a></p>
+        </div>
+        <div class="step-card">
+          <h3>Pick a database</h3>
+          <p><code class="inline">DB_URL</code> takes any SQLAlchemy URL. SQLite is the default and is fine on a single box with a disk.</p>
+          <p>Use Postgres anywhere containers get replaced, or for more than one replica. The driver ships in the image.</p>
+        </div>
+        <div class="step-card">
+          <h3>Scale past one replica</h3>
+          <p>Login state lives in the database, not in process memory, so a login can start on one instance and finish on another.</p>
+          <p>An OAuth state is claimed with a conditional <code class="inline">UPDATE</code>, so a replayed callback loses even when it arrives concurrently.</p>
+        </div>
+        <div class="step-card">
+          <h3>Encrypt at rest</h3>
+          <p>Set <code class="inline">SECRET_ENCRYPTION_KEY</code> and values are encrypted before they reach the database. Keep the key &mdash; losing it makes existing values unreadable.</p>
+          <code class="cmd">docker run --rm \
+  ghcr.io/clement880101/secret-manager:latest \
+  python -c "from cryptography.fernet import Fernet;
+  print(Fernet.generate_key().decode())"</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== how ===== -->
   <section id="how">
     <div class="wrap">
       <div class="sec-head">
-        <span class="sec-num">03</span>
+        <span class="sec-num">04</span>
         <h2>How it works</h2>
       </div>
       <div class="flow">
@@ -324,7 +402,7 @@
   <section id="commands">
     <div class="wrap">
       <div class="sec-head">
-        <span class="sec-num">04</span>
+        <span class="sec-num">05</span>
         <h2>Commands</h2>
       </div>
       <table class="cmds">
@@ -335,6 +413,7 @@
         <tr><td>secretmgr share KEY GITHUB_ID</td><td>Give another GitHub user read access to one of your secrets.</td></tr>
         <tr><td>secretmgr delete KEY</td><td>Delete a secret you own.</td></tr>
         <tr><td>secretmgr ping</td><td>Check that the backend is reachable.</td></tr>
+        <tr><td>secretmgr version</td><td>Print the CLI version.</td></tr>
       </table>
     </div>
   </section>
@@ -343,16 +422,17 @@
   <section>
     <div class="wrap">
       <div class="sec-head">
-        <span class="sec-num">05</span>
+        <span class="sec-num">06</span>
         <h2>Before you trust it with anything</h2>
       </div>
       <div class="status">
-        <h3>Project status — early preview</h3>
+        <h3>Project status — early</h3>
         <ul>
-          <li><strong>Traffic to the default backend is plain HTTP, not HTTPS.</strong> Your GitHub token and your secret values cross the network unencrypted. Treat this as a demo deployment, not a place for credentials that matter.</li>
-          <li><strong>Secrets are stored unencrypted at rest</strong> in the backend's database, and <code class="inline">list</code> returns values in plaintext.</li>
-          <li><strong>The binaries are unsigned</strong> on both macOS and Linux. Verify the SHA-256 checksum against the release page if that matters to you.</li>
-          <li><strong>You can point it somewhere else.</strong> Set <code class="inline">BACKEND_URL</code> to run the CLI against your own deployment — the backend, infrastructure, and Terraform are all in the repository.</li>
+          <li><strong>Secrets are returned in plaintext by <code class="inline">list</code></strong>, so a stolen token exposes every value that account can see at once.</li>
+          <li><strong>There is no rate limiting.</strong> A valid token can be replayed as fast as the service will answer.</li>
+          <li><strong>Encryption at rest is opt-in.</strong> Without <code class="inline">SECRET_ENCRYPTION_KEY</code> the backend stores values unencrypted and says so in its logs.</li>
+          <li><strong>The released binaries are unsigned.</strong> Verify the published SHA-256 checksums if that matters to you.</li>
+          <li><strong>TLS is your platform's job.</strong> The CLI warns when <code class="inline">BACKEND_URL</code> is plain HTTP to anything other than localhost.</li>
         </ul>
       </div>
     </div>
@@ -362,7 +442,7 @@
 
 <footer>
   <div class="wrap foot">
-    <span>Secret Manager — v0.2.0</span>
+    <span>Secret Manager — v0.3.0</span>
     <span><a href="https://github.com/clement880101/secret-manager/blob/main/LICENSE">Apache&nbsp;2.0</a></span>
     <span><a href="https://github.com/clement880101/secret-manager">github.com/clement880101/secret-manager</a></span>
   </div>

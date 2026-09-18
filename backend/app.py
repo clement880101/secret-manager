@@ -5,6 +5,7 @@ load_environment()
 import crypto
 import settings
 from database import init_db
+from version import VERSION
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from auth import router as auth_router
@@ -20,6 +21,14 @@ _docs = settings.docs_enabled()
 
 app = FastAPI(
     title="Secret Manager",
+    summary="A lightweight, distributed secret manager.",
+    description=(
+        "Store secrets, share them with other GitHub users, and read them back "
+        "from anywhere. State lives in the database rather than in process "
+        "memory, so this runs behind a load balancer across as many replicas "
+        "as you like."
+    ),
+    version=VERSION,
     docs_url="/docs" if _docs else None,
     redoc_url="/redoc" if _docs else None,
     openapi_url="/openapi.json" if _docs else None,
@@ -43,7 +52,8 @@ if _origins:
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    """Liveness and readiness probe. Cheap on purpose: no database round trip."""
+    return {"ok": True, "version": VERSION}
 
 
 app.include_router(auth_router)
