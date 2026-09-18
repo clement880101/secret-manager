@@ -228,7 +228,7 @@
 
   <div class="wrap stats">
     <div><b>&lt;10 MB</b><span>single binary, no runtime</span></div>
-    <div><b>Any DB</b><span>SQLite or Postgres</span></div>
+    <div><b>Batteries in</b><span>SQLite bundled, Postgres optional</span></div>
     <div><b>N replicas</b><span>no state in process memory</span></div>
     <div><b>Apache 2.0</b><span>self-host the whole thing</span></div>
   </div>
@@ -323,13 +323,13 @@
         <div>
           <span class="n">OPTION 01</span>
           <h3>Docker</h3>
-          <p>Published for <code class="inline">amd64</code> and <code class="inline">arm64</code>.</p>
+          <p>The database ships with it &mdash; nothing else to run. Published for <code class="inline">amd64</code> and <code class="inline">arm64</code>.</p>
           <code class="cmd">docker run -d -p 8000:8000 \
+  -v secretmgr-data:/data \
   -e BACKEND_URL=https://secrets.example.com \
   -e OAUTH_ID_GITHUB=... \
   -e OAUTH_SECRET_GITHUB=... \
   -e SECRET_ENCRYPTION_KEY=... \
-  -e DB_URL=postgresql+psycopg://... \
   ghcr.io/clement880101/secret-manager:latest</code>
         </div>
         <div>
@@ -351,8 +351,8 @@ docker compose up -d</code>
         </div>
         <div class="step-card">
           <h3>Pick a database</h3>
-          <p><code class="inline">DB_URL</code> takes any SQLAlchemy URL. SQLite is the default and is fine on a single box with a disk.</p>
-          <p>Use Postgres anywhere containers get replaced, or for more than one replica. The driver ships in the image.</p>
+          <p>SQLite is bundled and is the default, written to the <code class="inline">/data</code> volume. Nothing external needed for a single instance.</p>
+          <p>Point <code class="inline">DB_URL</code> at Postgres for more than one replica &mdash; the driver ships in the image too. A database inside the app container would give each replica its own copy.</p>
         </div>
         <div class="step-card">
           <h3>Scale past one replica</h3>

@@ -5,7 +5,20 @@ FROM python:3.12-slim
 # read it -- which previously exposed the GitHub OAuth client secret. The ECS
 # task definition already injects OAUTH_SECRET_GITHUB from Secrets Manager.
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    DB_URL=sqlite:////data/secrets.db
+
+# The database ships with the image: SQLite is part of the Python standard
+# library, so `docker run` needs nothing else to work. It lives under /data
+# rather than in /app so it can be kept on a volume -- otherwise it is written
+# into the container's writable layer and thrown away with the container.
+#
+# Postgres is NOT bundled into this image on purpose. A database inside the
+# application container would give every replica its own copy, so scaling to
+# two would silently produce two divergent datasets. Point DB_URL at a shared
+# Postgres when you want more than one instance; see deploy/docker-compose.yml.
+RUN mkdir -p /data
+VOLUME ["/data"]
 
 WORKDIR /app
 

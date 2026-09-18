@@ -66,17 +66,31 @@ The backend is a single stateless container listening on port 8000. It keeps
 everything in a SQL database and does **not** terminate TLS — whatever you put
 in front of it already does.
 
+**The database ships with it.** SQLite is part of the Python standard library,
+so this needs nothing else running:
+
 ```bash
-docker run -d -p 8000:8000 \
+docker run -d -p 8000:8000 -v secretmgr-data:/data \
   -e BACKEND_URL=https://secrets.example.com \
   -e OAUTH_ID_GITHUB=... \
   -e OAUTH_SECRET_GITHUB=... \
   -e SECRET_ENCRYPTION_KEY=... \
-  -e DB_URL=postgresql+psycopg://user:pass@host:5432/secretmgr \
   ghcr.io/clement880101/secret-manager:latest
 ```
 
-Published for `linux/amd64` and `linux/arm64`.
+The volume matters: `/data` is where the database lives, and without it the
+file goes into the container's writable layer and disappears with the
+container. Published for `linux/amd64` and `linux/arm64`.
+
+Point `DB_URL` at Postgres when you want more than one replica:
+
+```bash
+  -e DB_URL=postgresql+psycopg://user:pass@host:5432/secretmgr
+```
+
+Postgres is deliberately *not* bundled inside this image. A database in the
+application container would give each replica its own copy, so scaling to two
+would quietly produce two divergent datasets.
 
 Or bring up the API and a Postgres together:
 
