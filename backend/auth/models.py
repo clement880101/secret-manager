@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -123,3 +123,20 @@ class Credential(Base):
     # scrypt, encoded with its parameters and salt. See auth.passwords.
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class AuthAttempt(Base):
+    """A failed authentication, recorded so repeated ones can be slowed down.
+
+    Kept in the database rather than in process memory because the limit has to
+    hold across replicas: a per-process counter would let an attacker get N
+    tries per replica, and the whole point of this service is that it scales
+    horizontally. Auth endpoints are low volume, so the write cost is fine.
+    """
+
+    __tablename__ = "auth_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Either "user:<name>" or "ip:<address>", so one row type covers both limits.
+    key: Mapped[str] = mapped_column(String(160), index=True)
+    at: Mapped[float] = mapped_column(Float, index=True)

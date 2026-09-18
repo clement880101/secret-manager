@@ -101,3 +101,19 @@ def registration_open() -> bool:
     ALLOW_REGISTRATION=false on anything reachable from the open internet.
     """
     return bool_env("ALLOW_REGISTRATION", default=True)
+
+
+def auth_rate_limit() -> int:
+    """Failed authentications allowed per key per window. 0 disables the limit."""
+    try:
+        return max(0, int(os.getenv("AUTH_RATE_LIMIT", "10")))
+    except ValueError:
+        return 10
+
+
+def auth_rate_window_seconds() -> int:
+    """How long failures are counted for."""
+    try:
+        return max(1, int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "900")))
+    except ValueError:
+        return 900

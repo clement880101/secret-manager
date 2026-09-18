@@ -1,0 +1,86 @@
+# The API. Replicas hold no state -- login state, sessions and issued tokens all
+# live in the database -- so this scales with `kubectl scale` and needs no
+# session affinity on the Service or the Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: secretmgr
+spec:
+  selector:
+    app: secretmgr
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secretmgr
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: secretmgr
+  template:
+    metadata:
+      labels:
+        app: secretmgr
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/clement880101/secret-manager:latest
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            # POSTGRES_PASSWORD must come first: Kubernetes expands $(VAR) only
+            # from variables declared earlier in this list, so with DB_URL first
+            # the placeholder is passed through literally and the connection
+            # fails with a confusing name-resolution error.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secretmgr
+                  key: POSTGRES_PASSWORD
+            - name: DB_URL
+              value: postgresql+psycopg://secretmgr:$(POSTGRES_PASSWORD)@secretmgr-db:5432/secretmgr
+            - name: SECRET_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: secretmgr
+                  key: SECRET_ENCRYPTION_KEY
+            - name: BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: secretmgr
+                  key: BOOTSTRAP_TOKEN
+            # The address clients actually reach, not the cluster-internal one.
+            - name: BACKEND_URL
+              value: https://secrets.example.com
+            - name: ALLOW_REGISTRATION
+              value: "true"
+          # /healthz does no database work, so it answers even while the
+          # database is briefly unavailable and will not cause a restart storm.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
