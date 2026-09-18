@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  BINARY_NAME: secretmgr
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-13
+            target: macos-x86_64
+          - runner: macos-latest
+            target: macos-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: cli
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build binary
+        working-directory: cli
+        run: pyinstaller --onefile --name "${BINARY_NAME}" cli.py
+
+      # Neither command touches the network, so this stays honest on a runner
+      # that cannot reach the backend.
+      - name: Smoke test binary
+        working-directory: cli/dist
+        run: |
+          ./"${BINARY_NAME}" --help
+          ./"${BINARY_NAME}" logout
+
+      - name: Stage artifact
+        working-directory: cli/dist
+        run: |
+          mv "${BINARY_NAME}" "${BINARY_NAME}-${{ matrix.target }}"
+          shasum -a 256 "${BINARY_NAME}-${{ matrix.target }}" > "${BINARY_NAME}-${{ matrix.target }}.sha256"
+          cat "${BINARY_NAME}-${{ matrix.target }}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          path: |
+            cli/dist/${{ env.BINARY_NAME }}-${{ matrix.target }}
+            cli/dist/${{ env.BINARY_NAME }}-${{ matrix.target }}.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect checksums
+        working-directory: artifacts
+        run: |
+          cat *.sha256 > SHA256SUMS
+          rm -f *.sha256
+          ls -la
+          cat SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        working-directory: artifacts
+        run: |
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" ${BINARY_NAME}-* SHA256SUMS --clobber
+          else
+            gh release create "${TAG}" ${BINARY_NAME}-* SHA256SUMS \
+              --title "${TAG}" \
+              --generate-notes
+          fi
