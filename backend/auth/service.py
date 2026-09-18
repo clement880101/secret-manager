@@ -1,3 +1,4 @@
+import hashlib
 import os
 import time
 import secrets
@@ -8,6 +9,7 @@ from typing import Any, Dict, Literal, Tuple
 import httpx
 from fastapi import HTTPException
 
+import settings
 from database import session_scope
 from .models import User
 
@@ -16,6 +18,10 @@ STATE_TTL_SECONDS = 300
 SESSION_TTL_SECONDS = 600
 OAUTH_STATE_STORE: Dict[str, Dict[str, Any]] = {} # State token store for preventing CSRF attacks
 SESSION_STORE: Dict[str, Dict[str, Any]] = {} # Session store for storing login sessions
+
+# Verified tokens, keyed by digest rather than by the token itself so the raw
+# credential is not held in memory any longer than the request needs it.
+TOKEN_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize" # GitHub OAuth authorize URL
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token" # GitHub OAuth token URL
@@ -203,23 +209,56 @@ def fetch_github_user(access_token: str, token_kind: Literal["oauth", "pat"] = "
     raise HTTPException(502, "Unexpected response from GitHub when validating token")
 
 
+def _token_cache_key(access_token: str, token_kind: str) -> str:
+    """Digest a token for use as a cache key, so the raw value is not stored."""
+    return hashlib.sha256(f"{token_kind}:{access_token}".encode("utf-8")).hexdigest()
+
+
+def _prune_token_cache(now: float, ttl: int) -> None:
+    """Drop expired entries so the cache cannot grow without bound."""
+    expired = [key for key, (cached_at, _) in TOKEN_CACHE.items() if now - cached_at >= ttl]
+    for key in expired:
+        TOKEN_CACHE.pop(key, None)
+
+
 def verify_access_token(access_token: str, token_kind: Literal["oauth", "pat"] = "oauth") -> Dict[str, Any]:
     """Validate an access token and return normalized user details.
 
+    Results are cached for TOKEN_CACHE_TTL_SECONDS. Without a cache the API
+    calls GitHub once per request, which exhausts the deployment's rate limit
+    and lets a caller amplify traffic against it. The tradeoff is that a token
+    revoked on GitHub stays accepted here until its entry expires, so deployments
+    wanting immediate revocation set the TTL to 0.
+
     Inputs:
         access_token (str): GitHub OAuth access token to verify.
+        token_kind (Literal["oauth", "pat"]): Auth scheme the token expects.
     Outputs:
         Dict[str, Any]: Minimal user information dict with `id`, `login`, `name`, and `avatar_url`.
     """
+    ttl = settings.token_cache_ttl_seconds()
+    key = _token_cache_key(access_token, token_kind)
+    now = time.time()
+
+    if ttl:
+        cached = TOKEN_CACHE.get(key)
+        if cached is not None and now - cached[0] < ttl:
+            return cached[1]
+
     user = fetch_github_user(access_token, token_kind=token_kind)
     if "id" not in user:
         raise HTTPException(502, "GitHub user payload missing 'id'")
-    return {
+    details = {
         "id": str(user["id"]),
         "login": user.get("login"),
         "name": user.get("name"),
         "avatar_url": user.get("avatar_url"),
     }
+
+    if ttl:
+        _prune_token_cache(now, ttl)
+        TOKEN_CACHE[key] = (now, details)
+    return details
 
 
 def parse_token(auth_header: str | None) -> str:

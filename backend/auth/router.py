@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
+import settings
 from . import schemas, service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -49,6 +50,8 @@ def callback(code: str, state: str):
 
 @router.post("/login-test")
 def login_test(payload: schemas.LoginTestRequest):
+    if not settings.test_login_enabled():
+        raise HTTPException(404, "Not Found")
     try:
         token = service.login_with_personal_token(payload.token)
         return {"status": "ready", "token": token["access_token"], "user_id": token["user"]["id"]}
