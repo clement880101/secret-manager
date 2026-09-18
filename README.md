@@ -1,7 +1,11 @@
 # Secret Manager
 
-A lightweight, distributed secret manager. Store a secret, share it with a
-teammate, read it back from any machine.
+A lightweight, distributed secret manager you run in your own cloud. Store a
+secret, share it with a teammate, read it back from any machine.
+
+```bash
+docker pull ghcr.io/clement880101/secret-manager
+```
 
 - **One binary.** Under 10 MB, no Python, no runtime to install.
 - **One container.** Configured entirely through environment variables.
@@ -30,7 +34,8 @@ network access. Users sign themselves up.
 
 ## What you need to run it
 
-**A container runtime. That is the whole list.**
+**A container runtime. That is the whole list.** AWS, GCP, Azure, a VPS,
+Kubernetes, or a laptop — anywhere that runs a container.
 
 ```bash
 docker run -d -p 8000:8000 -v secretmgr-data:/data \
@@ -77,49 +82,6 @@ Working through this is the difference between a demo and a deployment:
 
 Read [SECURITY.md](SECURITY.md) for what this does *not* do. There are real
 limitations and they are listed plainly.
-
-## Install the CLI
-
-Download the build for your platform, make it executable, put it on your `PATH`:
-
-```bash
-curl -fsSL -o secretmgr \
-  https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-arm64
-chmod +x secretmgr && sudo mv secretmgr /usr/local/bin/
-```
-
-Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64`,
-`secretmgr-linux-arm64` or `secretmgr-windows-x86_64.exe`. On macOS the binaries are unsigned, so clear the
-quarantine flag once: `xattr -d com.apple.quarantine /usr/local/bin/secretmgr`.
-
-Point it at your deployment and log in:
-
-```bash
-export BACKEND_URL=https://secrets.example.com
-secretmgr login
-```
-
-### Commands
-
-| Command | Does |
-| --- | --- |
-| `secretmgr register NAME` | Create an account on this deployment and log in. |
-| `secretmgr login NAME` | Log in with your password. |
-| `secretmgr login --token T` | Log in with a token the server issued. |
-| `secretmgr login` | Log in through GitHub, when the deployment is configured for it. |
-| `secretmgr token USER` | Issue a token for someone, without giving them a password. |
-| `secretmgr whoami` | Show who you are and how this deployment authenticates. |
-| `secretmgr logout` | Remove the stored token. |
-| `secretmgr create KEY VALUE` | Store a secret you own. |
-| `secretmgr list` | Everything visible to you: yours, plus what others shared. |
-| `secretmgr share KEY GITHUB_ID` | Grant another GitHub user read access. |
-| `secretmgr delete KEY` | Delete a secret you own. |
-| `secretmgr ping` | Check the backend is reachable. |
-| `secretmgr version` | Print the CLI version. |
-
-`share` takes whatever identifies the recipient on that deployment: the name
-you issued their token under in local mode, or their numeric GitHub user ID in
-GitHub mode (`curl -s https://api.github.com/users/<login> | jq .id`).
 
 ## Run the server
 
@@ -218,6 +180,50 @@ IDs, and the token routes disappear. Create the OAuth app at
 The trade: no tokens to hand out and no accounts to administer, in exchange for
 every user needing a GitHub account and the server needing outbound access to
 `api.github.com`.
+
+## Then install the CLI
+
+Once your server is up, this is how people talk to it. Download the build
+for your platform, make it executable, put it on your `PATH`:
+
+```bash
+curl -fsSL -o secretmgr \
+  https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-arm64
+chmod +x secretmgr && sudo mv secretmgr /usr/local/bin/
+```
+
+Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64`,
+`secretmgr-linux-arm64` or `secretmgr-windows-x86_64.exe`. On macOS the binaries are unsigned, so clear the
+quarantine flag once: `xattr -d com.apple.quarantine /usr/local/bin/secretmgr`.
+
+Point it at your deployment and log in:
+
+```bash
+export BACKEND_URL=https://secrets.example.com
+secretmgr login
+```
+
+### Commands
+
+| Command | Does |
+| --- | --- |
+| `secretmgr register NAME` | Create an account on this deployment and log in. |
+| `secretmgr login NAME` | Log in with your password. |
+| `secretmgr login --token T` | Log in with a token the server issued. |
+| `secretmgr login` | Log in through GitHub, when the deployment is configured for it. |
+| `secretmgr token USER` | Issue a token for someone, without giving them a password. |
+| `secretmgr whoami` | Show who you are and how this deployment authenticates. |
+| `secretmgr logout` | Remove the stored token. |
+| `secretmgr create KEY VALUE` | Store a secret you own. |
+| `secretmgr list` | Everything visible to you: yours, plus what others shared. |
+| `secretmgr share KEY GITHUB_ID` | Grant another GitHub user read access. |
+| `secretmgr delete KEY` | Delete a secret you own. |
+| `secretmgr ping` | Check the backend is reachable. |
+| `secretmgr version` | Print the CLI version. |
+
+`share` takes whatever identifies the recipient on that deployment: the name
+you issued their token under in local mode, or their numeric GitHub user ID in
+GitHub mode (`curl -s https://api.github.com/users/<login> | jq .id`).
 
 ## How it works
 
