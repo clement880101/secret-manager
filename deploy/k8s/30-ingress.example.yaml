@@ -1,0 +1,24 @@
+# TLS terminates here, which is why the application does not do it itself.
+# Adjust the class and issuer for your cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: secretmgr
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [secrets.example.com]
+      secretName: secretmgr-tls
+  rules:
+    - host: secrets.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: secretmgr
+                port:
+                  name: http

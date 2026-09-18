@@ -38,8 +38,8 @@ curl -fsSL -o secretmgr \
 chmod +x secretmgr && sudo mv secretmgr /usr/local/bin/
 ```
 
-Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64` or
-`secretmgr-linux-arm64`. On macOS the binaries are unsigned, so clear the
+Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64`,
+`secretmgr-linux-arm64` or `secretmgr-windows-x86_64.exe`. On macOS the binaries are unsigned, so clear the
 quarantine flag once: `xattr -d com.apple.quarantine /usr/local/bin/secretmgr`.
 
 Point it at your deployment and log in:
@@ -127,6 +127,15 @@ cd deploy && cp .env.example .env   # fill it in
 docker compose up -d
 ```
 
+Or run it distributed, behind a load balancer, in one command:
+
+```bash
+docker compose -f docker-compose.cluster.yml up -d --scale api=3
+```
+
+Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/). Replicas hold no
+state, so scaling needs no session affinity and no further configuration.
+
 **[DEPLOYMENT.md](DEPLOYMENT.md) has the detail**: every configuration
 variable, choosing a database, reverse proxies, PaaS platforms, Kubernetes,
 running multiple replicas, and upgrading.
@@ -180,7 +189,7 @@ even when it arrives concurrently.
 | --- | --- |
 | `backend/` | FastAPI service, SQLAlchemy models, tests. |
 | `cli/` | The CLI, packaged with PyInstaller. |
-| `deploy/` | Docker Compose stack: API plus Postgres. |
+| `deploy/` | Compose stacks (single node and clustered) plus Kubernetes manifests. |
 | `integration-tests/` | Drives the built binary against a real backend on a real database. |
 | `terraform/` | One AWS deployment. Optional — see `DEPLOYMENT.md`. |
 
