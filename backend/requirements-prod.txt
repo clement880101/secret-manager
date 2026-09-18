@@ -5,3 +5,6 @@ pydantic==2.9.2
 httpx==0.28.1
 python-dotenv==1.2.1
 cryptography==46.0.4
+# Bundled so the image can talk to Postgres without a rebuild: SQLite is
+# fine for a single box but does not survive platforms that move containers.
+psycopg[binary]==3.2.12
