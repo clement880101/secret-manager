@@ -1,0 +1,5 @@
+# What CI needs to produce a release binary: runtime deps plus PyInstaller, and
+# deliberately no test tooling. Building with pytest installed pulled Pygments
+# into the binary and cost ~1.8MB.
+-r requirements.txt
+pyinstaller==6.16.0
