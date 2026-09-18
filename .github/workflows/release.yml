@@ -81,8 +81,15 @@ jobs:
         working-directory: cli/dist
         shell: bash
         run: |
-          mv "${BINARY_NAME}${{ matrix.extension }}" "${BINARY_NAME}-${{ matrix.target }}${{ matrix.extension }}"
-          shasum -a 256 "${BINARY_NAME}-${{ matrix.target }}${{ matrix.extension }}" > "${BINARY_NAME}-${{ matrix.target }}.sha256"
+          asset="${BINARY_NAME}-${{ matrix.target }}${{ matrix.extension }}"
+          mv "${BINARY_NAME}${{ matrix.extension }}" "$asset"
+          # Git-for-Windows bash has sha256sum but not shasum, which is a Perl
+          # script; macOS is the other way round. Both emit the same format.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$asset" > "${BINARY_NAME}-${{ matrix.target }}.sha256"
+          else
+            shasum -a 256 "$asset" > "${BINARY_NAME}-${{ matrix.target }}.sha256"
+          fi
           cat "${BINARY_NAME}-${{ matrix.target }}.sha256"
 
       - name: Upload artifact
