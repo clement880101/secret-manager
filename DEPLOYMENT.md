@@ -18,16 +18,12 @@ issues its own tokens, so `docker run` with no environment at all works.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `AUTH_MODE` | no | `local` or `github`. Defaults to `github` when an OAuth app is configured, `local` otherwise. |
 | `ALLOW_REGISTRATION` | no | Whether anyone reaching the service may sign up. Default `true`. |
 | `BOOTSTRAP_TOKEN` | no | Local mode: the first token, instead of one generated at startup. |
-| `BACKEND_URL` | github mode | The public URL clients reach, including scheme. GitHub redirects the OAuth callback here, so it must match your real address. |
-| `OAUTH_ID_GITHUB` | github mode | GitHub OAuth app client ID. |
-| `OAUTH_SECRET_GITHUB` | github mode | GitHub OAuth app client secret. |
+| `BACKEND_URL` | no | The public address clients reach. |
 | `SECRET_ENCRYPTION_KEY` | strongly recommended | Fernet key. **Without it, secret values are stored unencrypted.** |
 | `DB_URL` | no | SQLAlchemy URL. Defaults to local SQLite. Use Postgres for anything real. |
 | `ENABLE_API_DOCS` | no | Serve `/docs` and `/openapi.json`. Default `false`. |
-| `ENABLE_TEST_LOGIN` | no | Serve `POST /auth/login-test`. Default `false`. |
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins. Default: none. |
 | `TOKEN_CACHE_TTL_SECONDS` | no | Default `300`. |
 
@@ -38,10 +34,9 @@ docker run --rm ghcr.io/clement880101/secret-manager:latest \
   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-## Choosing how people log in
+## Accounts
 
-**Local (the default when no OAuth app is configured).** The service manages its
-own accounts. People sign themselves up:
+The service manages its own. People sign themselves up:
 
 ```bash
 secretmgr register alice          # prompts for a password
@@ -49,10 +44,10 @@ secretmgr login alice             # from any other machine
 ```
 
 Passwords are hashed with scrypt from the standard library — no extra
-dependency — and are never stored in any recoverable form. Set
-`ALLOW_REGISTRATION=false` to close sign-ups on a deployment reachable from the
-open internet; an administrator can then provision access with
-`secretmgr token <name>`.
+dependency — and are never stored in any recoverable form. Failed logins are
+rate limited per username and per address. Set `ALLOW_REGISTRATION=false` to
+close sign-ups on a deployment reachable from the open internet; an
+administrator can then provision access with `secretmgr token <name>`.
 
 There is also always a way in without a password. On first start the service
 creates a token and writes it to the log:
@@ -65,26 +60,9 @@ This is shown once and cannot be recovered:
 ```
 
 Set `BOOTSTRAP_TOKEN` to choose it yourself, which is easier on immutable
-platforms or where logs are awkward to read. Then:
+platforms or where logs are awkward to read. Only the SHA-256 of a token is
+stored, and tokens do not expire — revoke deliberately with `secretmgr revoke`.
 
-```bash
-secretmgr login --token smt_...
-secretmgr token alice --label laptop   # issue one for a teammate
-```
-
-Only the SHA-256 of a token is stored, so a copy of the database is not a set
-of working credentials, and a token cannot be shown again after it is issued.
-Tokens do not expire on their own — revoke deliberately.
-
-**GitHub.** Set `OAUTH_ID_GITHUB` and `OAUTH_SECRET_GITHUB` and the service
-switches: `secretmgr login` opens a browser, identities are GitHub user IDs,
-and the token routes disappear. Create the OAuth app at
-<https://github.com/settings/developers> with callback URL
-`<BACKEND_URL>/auth/callback`.
-
-The trade is no tokens to hand out and no accounts to administer, against every
-user needing a GitHub account and the server needing outbound access to
-`api.github.com`. Local mode needs neither, which is why it is the default.
 
 ## Choosing a database
 
@@ -147,8 +125,8 @@ secrets.example.com {
 }
 ```
 
-Set `BACKEND_URL=https://secrets.example.com` so the OAuth callback comes back
-to the public address rather than the container's.
+Set `BACKEND_URL=https://secrets.example.com` so the service knows the address
+clients actually reach.
 
 ### Platforms that build from a Dockerfile
 
@@ -210,22 +188,17 @@ need far less setup.
 Supported, on Postgres. Everything a request needs is in the database rather
 than in process memory, so requests can land on any instance:
 
-- Login state (the OAuth `state`, the pending session, the issued token) lives
-  in `login_sessions`, so a login can start on one replica and finish on
-  another.
-- An OAuth `state` is claimed with a conditional `UPDATE` and is redeemed
-  exactly once, so a replayed callback loses even if it arrives concurrently.
+- Accounts, tokens and rate-limit counters all live in the database, so any
+  replica can serve any request and no session affinity is needed.
 - Creating a user and sharing a secret are both idempotent under concurrent
   writers.
+- Failed-login counting is shared across replicas, so the limit is the limit
+  rather than the limit multiplied by however many instances are running.
 
 Two caveats worth knowing:
 
 - **Use Postgres.** SQLite serialises writers and does not survive a container
   being replaced, so it cannot back more than one instance.
-- **Token verification is cached per process** (`TOKEN_CACHE_TTL_SECONDS`,
-  default 300s). Each replica keeps its own cache, so a token revoked on GitHub
-  can stay accepted for up to that long on each. Set it to `0` if you need
-  revocation to take effect immediately.
 
 The concurrency behaviour is covered by tests that run against a real Postgres.
 They skip unless `TEST_POSTGRES_URL` is set, because SQLite would report success

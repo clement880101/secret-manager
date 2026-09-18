@@ -44,23 +44,4 @@ variable "acm_certificate_arn" {
   default     = ""
 }
 
-variable "enable_test_login" {
-  description = <<-EOT
-    Expose POST /auth/login-test, which swaps a GitHub personal access token
-    for a session. The integration suite needs it because it cannot drive a
-    browser. It is not an authentication bypass -- the token is still checked
-    against GitHub -- but it is a second way in, so it is off by default.
-  EOT
-  type        = bool
-  default     = false
-}
 
-variable "oauth_client_id" {
-  description = <<-EOT
-    GitHub OAuth app client ID. Client IDs are not secret (the matching client
-    secret lives in Secrets Manager), but it was previously hardcoded, which
-    meant anyone deploying this project pointed at someone else's OAuth app.
-  EOT
-  type        = string
-  default     = "Ov23liZnlg8w1GWaceQE"
-}

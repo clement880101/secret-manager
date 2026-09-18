@@ -102,8 +102,6 @@ def ensure_bootstrap_token(user_id: str = "admin") -> Optional[str]:
     that issues a token requires a token. Returns the new token the first time
     only, so restarting does not keep minting credentials.
     """
-    from . import service as _service  # noqa: F401  (kept for import symmetry)
-
     with session_scope() as db:
         if db.query(ApiToken).count() > 0:
             return None
