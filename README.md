@@ -28,7 +28,8 @@ network access. Users sign themselves up.
 
 [Website](https://clement880101.github.io/secret-manager/) ·
 [Download](https://github.com/clement880101/secret-manager/releases/latest) ·
-[Deployment](DEPLOYMENT.md) · [Security](SECURITY.md)
+[Deployment](DEPLOYMENT.md) · [Security](SECURITY.md) ·
+[About the author](https://clement880101.github.io/personal-web/)
 
 ---
 
@@ -159,9 +160,14 @@ running multiple replicas, and upgrading.
 | `AUTH_MODE` | no | `local` or `github`. Defaults to `github` when an OAuth app is configured, `local` otherwise. |
 | `ALLOW_REGISTRATION` | no | Whether anyone reaching the service may sign up. Default `true`. |
 | `BOOTSTRAP_TOKEN` | no | Local mode: the first token, instead of a generated one. |
-| `BACKEND_URL` | github mode | Public URL clients reach. GitHub redirects the OAuth callback here. |
-| `OAUTH_ID_GITHUB` | github mode | GitHub OAuth app client ID. |
-| `OAUTH_SECRET_GITHUB` | github mode | GitHub OAuth app client secret. |
+| `BACKEND_URL` | github mode only | Where GitHub sends the OAuth callback. Unused in local mode. |
+| `OAUTH_ID_GITHUB` | github mode only | GitHub OAuth app client ID. |
+| `OAUTH_SECRET_GITHUB` | github mode only | GitHub OAuth app client secret. |
+
+**The three `github mode only` rows are not needed by default.** They exist
+solely for deployments that want people to sign in with their GitHub account
+instead of registering here. Leave all three unset and none of them apply:
+the service manages its own accounts and never contacts GitHub.
 | `SECRET_ENCRYPTION_KEY` | recommended | Fernet key. **Unset means values are stored in plaintext.** |
 | `DB_URL` | no | Defaults to local SQLite. Use Postgres for anything real. |
 | `ENABLE_API_DOCS` | no | Serve `/docs`. Default `false`. |
