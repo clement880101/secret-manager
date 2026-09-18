@@ -25,6 +25,25 @@ jobs:
     container:
       image: python:3.12-slim
 
+    # A real database, because the concurrency tests need genuine concurrent
+    # writers. SQLite serialises them and would pass for code that is not
+    # actually safe to run on more than one replica.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sm
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: sm
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_POSTGRES_URL: postgresql+psycopg://sm:secret@postgres:5432/sm
+
     steps:
       - name: Install system dependencies
         run: |
