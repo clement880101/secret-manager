@@ -2,6 +2,10 @@
 
 Cloud-backed secret manager with a FastAPI backend, Python CLI, end-to-end tests, and AWS infrastructure managed through Terraform. Local development mirrors CI/CD via Dev Containers and Docker.
 
+**[Website](https://clement880101.github.io/secret-manager/) · [Download the CLI](https://github.com/clement880101/secret-manager/releases/latest)** — prebuilt binaries for macOS and Linux (arm64 and x86_64). No Python required.
+
+> Early preview. Traffic to the default backend is plain HTTP and secrets are stored unencrypted at rest, so treat the hosted deployment as a demo rather than somewhere to keep real credentials.
+
 ### Repository Layout
 
 | Path | Highlights |
