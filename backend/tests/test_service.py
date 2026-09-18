@@ -30,33 +30,32 @@ def test_put_secret_with_duplicate_key_raises(service_modules):
 
 def test_get_secret_for_user_returns_owned_secret(service_modules):
     service = service_modules["service"]
-    database = service_modules["database"]
 
     service.put_secret("alice", "db-password", "pw")
 
     secret = service.get_secret_for_user("alice", "db-password")
 
-    assert secret is not None
-    with database.session_scope() as session:
-        merged = session.merge(secret)
-        assert merged.key == "db-password"
-        assert merged.value == "pw"
+    assert secret == {"key": "db-password", "value": "pw", "owner_id": "alice"}
 
 
 def test_get_secret_for_user_returns_shared_secret(service_modules):
     service = service_modules["service"]
-    database = service_modules["database"]
 
     service.put_secret("owner", "shared-key", "shared-value")
     service.share_secret("owner", "shared-key", "bob")
 
     secret = service.get_secret_for_user("bob", "shared-key")
 
-    assert secret is not None
-    with database.session_scope() as session:
-        merged = session.merge(secret)
-        assert merged.owner.github_id == "owner"
-        assert merged.value == "shared-value"
+    assert secret == {"key": "shared-key", "value": "shared-value", "owner_id": "owner"}
+
+
+def test_get_secret_for_user_hides_unshared_secret(service_modules):
+    service = service_modules["service"]
+
+    service.put_secret("owner", "private-key", "private-value")
+    service.put_secret("bob", "other-key", "other-value")
+
+    assert service.get_secret_for_user("bob", "private-key") is None
 
 
 def test_list_visible_includes_owned_and_shared(service_modules):

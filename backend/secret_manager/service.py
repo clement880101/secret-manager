@@ -23,7 +23,8 @@ def put_secret(owner_id: str, key: str, value: str) -> None:
         session.add(secret)
 
 
-def get_secret_for_user(ext_user_id: str, key: str) -> Optional[Secret]:
+def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
+    """Return the secret as a plain dict so callers are not tied to the session."""
     with session_scope() as session:
         me = session.get(User, ext_user_id)
         if me is None:
@@ -31,13 +32,15 @@ def get_secret_for_user(ext_user_id: str, key: str) -> Optional[Secret]:
         secret = session.scalars(
             select(Secret).where(Secret.key == key, Secret.owner == me)
         ).first()
-        if secret:
-            return secret
-        return session.scalars(
-            select(Secret)
-            .join(Secret.shares)
-            .where(Secret.key == key, Share.user == me)
-        ).first()
+        if secret is None:
+            secret = session.scalars(
+                select(Secret)
+                .join(Secret.shares)
+                .where(Secret.key == key, Share.user == me)
+            ).first()
+        if secret is None:
+            return None
+        return {"key": secret.key, "value": secret.value, "owner_id": secret.owner_id}
 
 
 def list_visible(ext_user_id: str) -> List[dict]:
