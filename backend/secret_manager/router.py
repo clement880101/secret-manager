@@ -32,8 +32,7 @@ def get_secret(request: Request, key: str):
     secret = service.get_secret_for_user(user_id, key)
     if not secret:
         raise HTTPException(403, "Forbidden or not found")
-    owner = secret.owner.github_id  # resolved by ORM
-    return {"key": secret.key, "value": secret.value, "owner_id": owner}
+    return secret
 
 
 @router.post("/{key}/share")

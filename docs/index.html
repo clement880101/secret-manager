@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secret Manager</title>
+<meta name="description" content="A command-line secret manager. Store secrets, share them with other GitHub users, authenticate with your GitHub account.">
+<meta property="og:title" content="Secret Manager">
+<meta property="og:description" content="A command-line secret manager. Store secrets, share them with other GitHub users, authenticate with your GitHub account.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2218%22 fill=%22%2308090b%22/><rect x=%2222%22 y=%2246%22 width=%2256%22 height=%2216%22 fill=%22%23ffb000%22/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;700&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#08090b;
+    --ink-2:#101217;
+    --ink-3:#171a20;
+    --paper:#ece7dd;
+    --muted:#8d8b84;
+    --amber:#ffb000;
+    --amber-deep:#c98100;
+    --line:rgba(236,231,221,.13);
+    --line-strong:rgba(236,231,221,.28);
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --display:"Bricolage Grotesque",sans-serif;
+    --body:"Newsreader",Georgia,serif;
+    --gutter:clamp(16px,5vw,72px);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:var(--body);
+    font-size:clamp(16px,1.05vw,18px);
+    line-height:1.65;
+    overflow-x:hidden;
+  }
+  /* Grid + grain atmosphere */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:clamp(48px,7vw,96px) clamp(48px,7vw,96px);
+    mask-image:radial-gradient(ellipse 120% 80% at 50% 0%,#000 30%,transparent 85%);
+    opacity:.55;
+  }
+  body::after{
+    content:"";position:fixed;inset:-50%;z-index:0;pointer-events:none;opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  main,header,footer{position:relative;z-index:1}
+
+  a{color:inherit}
+  .wrap{max-width:1180px;margin:0 auto;padding-inline:var(--gutter)}
+
+  /* ---------- nav ---------- */
+  header{border-bottom:1px solid var(--line);position:sticky;top:0;backdrop-filter:blur(14px);background:rgba(8,9,11,.82);z-index:10}
+  .nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:14px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;text-decoration:none}
+  .brand i{display:block;width:26px;height:9px;background:var(--amber);flex:none}
+  .nav-links{display:flex;gap:clamp(14px,2.4vw,30px);font-family:var(--mono);font-size:12.5px;letter-spacing:.07em}
+  .nav-links a{color:var(--muted);text-decoration:none;transition:color .18s}
+  .nav-links a:hover{color:var(--amber)}
+  @media(max-width:620px){.nav-links a.hide-sm{display:none}}
+
+  /* ---------- hero ---------- */
+  .hero{padding-block:clamp(64px,11vw,132px) clamp(48px,7vw,84px)}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--amber);margin:0 0 clamp(22px,3vw,34px)}
+  .eyebrow span{color:var(--muted)}
+  h1{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(44px,8.6vw,118px);line-height:.94;letter-spacing:-.035em;
+    margin:0 0 clamp(24px,3.4vw,38px);max-width:14ch;
+  }
+  /* redaction reveal */
+  .redact{position:relative;display:inline-block;color:var(--amber)}
+  .redact::after{
+    content:"";position:absolute;left:-.06em;right:-.06em;top:.1em;bottom:.14em;
+    background:var(--amber);transform-origin:right center;
+    animation:unredact .9s cubic-bezier(.76,0,.24,1) 1.15s forwards;
+  }
+  @keyframes unredact{to{transform:scaleX(0)}}
+  .lede{font-size:clamp(18px,2.1vw,25px);line-height:1.5;color:#cfc9bd;max-width:44ch;font-weight:300;margin:0 0 clamp(32px,4vw,44px)}
+  .cta-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .btn{
+    font-family:var(--mono);font-size:13.5px;letter-spacing:.04em;text-decoration:none;
+    padding:15px 26px;display:inline-flex;align-items:center;gap:10px;border:1px solid var(--amber);
+    background:var(--amber);color:var(--ink);font-weight:700;transition:transform .16s,box-shadow .16s;
+  }
+  .btn:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--amber-deep)}
+  .btn.ghost{background:transparent;color:var(--paper);border-color:var(--line-strong);font-weight:400}
+  .btn.ghost:hover{border-color:var(--paper);box-shadow:5px 5px 0 rgba(236,231,221,.16)}
+  .hero-fade>*{opacity:0;animation:rise .8s cubic-bezier(.22,1,.36,1) forwards}
+  .hero-fade>*:nth-child(1){animation-delay:.05s}
+  .hero-fade>*:nth-child(2){animation-delay:.16s}
+  .hero-fade>*:nth-child(3){animation-delay:.28s}
+  .hero-fade>*:nth-child(4){animation-delay:.4s}
+  @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+  /* ---------- section chrome ---------- */
+  section{padding-block:clamp(56px,8vw,104px);border-top:1px solid var(--line)}
+  .sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:clamp(28px,4vw,46px);flex-wrap:wrap}
+  .sec-num{font-family:var(--mono);font-size:12px;color:var(--amber);letter-spacing:.18em}
+  h2{font-family:var(--display);font-weight:600;font-size:clamp(26px,4vw,46px);letter-spacing:-.02em;line-height:1.08;margin:0}
+  .sec-note{color:var(--muted);font-size:15.5px;max-width:52ch;margin:14px 0 0}
+
+  /* ---------- terminal ---------- */
+  .term{
+    border:1px solid var(--line-strong);background:var(--ink-2);
+    font-family:var(--mono);font-size:clamp(11.5px,1.28vw,14px);line-height:1.95;
+    overflow:hidden;box-shadow:0 30px 70px -30px #000;
+  }
+  .term-bar{display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--line);background:var(--ink-3)}
+  .term-bar i{width:9px;height:9px;border-radius:50%;background:#33363d;flex:none}
+  .term-bar i:first-child{background:var(--amber)}
+  .term-bar b{margin-left:8px;font-weight:400;font-size:11.5px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+  .term-body{padding:clamp(16px,2.4vw,28px);overflow-x:auto}
+  .term-body pre{margin:0;white-space:pre;font:inherit}
+  .p{color:var(--amber);user-select:none}
+  .c{color:var(--paper)}
+  .o{color:var(--muted)}
+  .hl{color:#dfd7c6}
+
+  /* ---------- downloads ---------- */
+  /* Explicit counts, not auto-fit: four cards must divide evenly or the 1px
+     grid background shows through as an empty cell. */
+  .dl-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line-strong);border:1px solid var(--line-strong)}
+  @media(max-width:940px){.dl-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:470px){.dl-grid{grid-template-columns:1fr}}
+  .dl{background:var(--ink);padding:clamp(20px,2.6vw,30px);display:flex;flex-direction:column;gap:7px;text-decoration:none;transition:background .18s;position:relative}
+  .dl:hover{background:var(--ink-2)}
+  .dl .os{font-family:var(--display);font-weight:600;font-size:20px;letter-spacing:-.01em}
+  .dl .arch{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.06em}
+  .dl .go{font-family:var(--mono);font-size:12.5px;color:var(--amber);margin-top:10px;letter-spacing:.05em}
+  .dl[data-suggested="1"]::after{
+    content:"YOUR SYSTEM";position:absolute;
+    bottom:clamp(20px,2.6vw,30px);right:clamp(20px,2.6vw,30px);
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;color:var(--ink);background:var(--amber);padding:3px 7px;
+  }
+  .after{margin-top:26px;display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+  .step-card{border:1px solid var(--line);padding:22px}
+  .step-card h3{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);margin:0 0 12px;font-weight:400}
+  .step-card p{margin:0 0 12px;font-size:15px;color:#c6c0b4}
+  .step-card p:last-child{margin-bottom:0}
+  code.inline{font-family:var(--mono);font-size:.85em;background:var(--ink-3);border:1px solid var(--line);padding:2px 7px;color:var(--paper);white-space:nowrap}
+  .cmd{display:block;font-family:var(--mono);font-size:12.5px;background:var(--ink-2);border:1px solid var(--line);border-left:2px solid var(--amber);padding:12px 14px;overflow-x:auto;color:#dfd7c6;margin:0 0 10px}
+
+  /* ---------- steps ---------- */
+  /* Same reason as .dl-grid: three cards, so never an in-between column count. */
+  .flow{display:grid;gap:1px;background:var(--line-strong);border:1px solid var(--line-strong);grid-template-columns:repeat(3,1fr)}
+  @media(max-width:900px){.flow{grid-template-columns:1fr}}
+  .flow>div{background:var(--ink);padding:clamp(22px,2.8vw,32px)}
+  .flow .n{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--amber);display:block;margin-bottom:14px}
+  .flow h3{font-family:var(--display);font-weight:600;font-size:21px;margin:0 0 10px;letter-spacing:-.01em}
+  .flow p{margin:0;color:var(--muted);font-size:15.5px}
+
+  /* ---------- commands table ---------- */
+  .cmds{width:100%;border-collapse:collapse;font-size:15.5px}
+  .cmds td{padding:15px 0;border-top:1px solid var(--line);vertical-align:top}
+  .cmds tr:first-child td{border-top:none}
+  .cmds td:first-child{font-family:var(--mono);font-size:13px;color:var(--amber);white-space:nowrap;padding-right:28px;width:1%}
+  .cmds td:last-child{color:#c6c0b4}
+  @media(max-width:560px){
+    .cmds td,.cmds td:first-child{display:block;width:auto;padding:0;border:none}
+    .cmds td:first-child{padding-top:16px;border-top:1px solid var(--line)}
+    .cmds td:last-child{padding-bottom:16px;padding-top:4px}
+    .cmds tr:first-child td:first-child{border-top:none;padding-top:0}
+  }
+
+  /* ---------- status ---------- */
+  .status{border:1px solid var(--line-strong);border-left:3px solid var(--amber);padding:clamp(22px,3vw,32px);background:var(--ink-2)}
+  .status h3{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber);margin:0 0 16px;font-weight:400}
+  .status ul{margin:0;padding-left:1.1em;display:grid;gap:11px}
+  .status li{color:#c6c0b4;font-size:15.5px}
+  .status strong{color:var(--paper);font-weight:500}
+
+  footer{border-top:1px solid var(--line);padding-block:40px;color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.05em}
+  .foot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  footer a{color:var(--muted);text-decoration:none}
+  footer a:hover{color:var(--amber)}
+
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .redact::after{transform:scaleX(0)}
+    .hero-fade>*{opacity:1}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top"><i></i> Secret&nbsp;Manager</a>
+    <nav class="nav-links">
+      <a href="#download">Download</a>
+      <a href="#how" class="hide-sm">How it works</a>
+      <a href="#commands" class="hide-sm">Commands</a>
+      <a href="https://github.com/clement880101/secret-manager">Source</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <div class="wrap hero hero-fade">
+    <p class="eyebrow">Command-line vault <span>/ GitHub-authenticated / v0.1.0</span></p>
+    <h1>Keep your <span class="redact">secrets</span> on the command line.</h1>
+    <p class="lede">Store a key, share it with a teammate by their GitHub account, pull it back on another machine. One binary, no runtime to install.</p>
+    <div class="cta-row">
+      <a class="btn" href="#download" id="heroDownload">Download the CLI</a>
+      <a class="btn ghost" href="https://github.com/clement880101/secret-manager">Read the source</a>
+    </div>
+  </div>
+
+  <!-- ===== terminal ===== -->
+  <section>
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">01</span>
+        <h2>A real session</h2>
+      </div>
+      <div class="term">
+        <div class="term-bar"><i></i><i></i><i></i><b>secretmgr</b></div>
+        <div class="term-body"><pre><span class="p">$</span> <span class="c">secretmgr login</span>
+<span class="o">Open the following link in a browser to continue:</span>
+<span class="o">https://github.com/login/oauth/authorize?client_id=...</span>
+<span class="o">Waiting for authentication...</span>
+<span class="hl">Logged in as 1111</span>
+
+<span class="p">$</span> <span class="c">secretmgr create db-pw hunter2</span>
+<span class="hl">Stored secret `db-pw`.</span>
+
+<span class="p">$</span> <span class="c">secretmgr share db-pw 2222</span>
+<span class="hl">Granted access to `db-pw` for 2222.</span>
+
+<span class="p">$</span> <span class="c">secretmgr list</span>
+<span class="hl">db-pw = hunter2 (owner: 1111)</span>
+
+<span class="p">$</span> <span class="c">secretmgr delete db-pw</span>
+<span class="hl">Deleted secret `db-pw`.</span></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== download ===== -->
+  <section id="download">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">02</span>
+        <h2>Download</h2>
+      </div>
+      <p class="sec-note">Single self-contained executable, roughly 13&nbsp;MB. Nothing to install alongside it — no Python, no dependencies.</p>
+
+      <div class="dl-grid" id="dlGrid">
+        <a class="dl" data-os="macos" data-arch="arm64" href="https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-arm64">
+          <span class="os">macOS</span><span class="arch">Apple silicon · arm64</span><span class="go">Download ↓</span>
+        </a>
+        <a class="dl" data-os="macos" data-arch="x86_64" href="https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-x86_64">
+          <span class="os">macOS</span><span class="arch">Intel · x86_64</span><span class="go">Download ↓</span>
+        </a>
+        <a class="dl" data-os="linux" data-arch="x86_64" href="https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-linux-x86_64">
+          <span class="os">Linux</span><span class="arch">x86_64</span><span class="go">Download ↓</span>
+        </a>
+        <a class="dl" data-os="linux" data-arch="arm64" href="https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-linux-arm64">
+          <span class="os">Linux</span><span class="arch">arm64 · aarch64</span><span class="go">Download ↓</span>
+        </a>
+      </div>
+
+      <div class="after">
+        <div class="step-card">
+          <h3>Then make it runnable</h3>
+          <p>Downloads arrive without the executable bit. Rename it, mark it executable, put it on your <code class="inline">PATH</code>:</p>
+          <code class="cmd">chmod +x secretmgr-* &amp;&amp; sudo mv secretmgr-* /usr/local/bin/secretmgr</code>
+          <p>Check it: <code class="inline">secretmgr ping</code> → <span style="color:var(--amber)">API healthy.</span></p>
+        </div>
+        <div class="step-card">
+          <h3>On macOS, the first run</h3>
+          <p>These builds are <strong style="color:var(--paper);font-weight:500">not code-signed</strong>, so Gatekeeper refuses them until you say otherwise. Clear the quarantine flag:</p>
+          <code class="cmd">xattr -d com.apple.quarantine /usr/local/bin/secretmgr</code>
+          <p>Or open it once from Finder with right-click → Open.</p>
+        </div>
+        <div class="step-card">
+          <h3>Verify what you downloaded</h3>
+          <p>Every release ships a <code class="inline">SHA256SUMS</code> file built alongside the binaries.</p>
+          <code class="cmd">shasum -a 256 -c SHA256SUMS --ignore-missing</code>
+          <p><a href="https://github.com/clement880101/secret-manager/releases/latest" style="color:var(--amber)">All release assets →</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== how ===== -->
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">03</span>
+        <h2>How it works</h2>
+      </div>
+      <div class="flow">
+        <div>
+          <span class="n">STEP 01</span>
+          <h3>Sign in with GitHub</h3>
+          <p>The CLI opens a GitHub authorization page and waits. Your GitHub account is the identity — there is no separate password to create.</p>
+        </div>
+        <div>
+          <span class="n">STEP 02</span>
+          <h3>Store a key and value</h3>
+          <p>Secrets are scoped to you. Keys are unique per account, so a second <code class="inline">create</code> on the same key is refused rather than silently overwriting.</p>
+        </div>
+        <div>
+          <span class="n">STEP 03</span>
+          <h3>Share by GitHub ID</h3>
+          <p>Grant read access using the recipient's numeric GitHub user ID. They see the secret in their own <code class="inline">list</code>; only you can delete or re-share it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== commands ===== -->
+  <section id="commands">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">04</span>
+        <h2>Commands</h2>
+      </div>
+      <table class="cmds">
+        <tr><td>secretmgr login</td><td>Authenticate with GitHub and store the access token in <code class="inline">~/.token</code>.</td></tr>
+        <tr><td>secretmgr logout</td><td>Remove the stored token from this machine.</td></tr>
+        <tr><td>secretmgr create KEY VALUE</td><td>Store a new secret you own.</td></tr>
+        <tr><td>secretmgr list</td><td>List everything visible to you — what you own, plus what others have shared with you.</td></tr>
+        <tr><td>secretmgr share KEY GITHUB_ID</td><td>Give another GitHub user read access to one of your secrets.</td></tr>
+        <tr><td>secretmgr delete KEY</td><td>Delete a secret you own.</td></tr>
+        <tr><td>secretmgr ping</td><td>Check that the backend is reachable.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== status ===== -->
+  <section>
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">05</span>
+        <h2>Before you trust it with anything</h2>
+      </div>
+      <div class="status">
+        <h3>Project status — early preview</h3>
+        <ul>
+          <li><strong>Traffic to the default backend is plain HTTP, not HTTPS.</strong> Your GitHub token and your secret values cross the network unencrypted. Treat this as a demo deployment, not a place for credentials that matter.</li>
+          <li><strong>Secrets are stored unencrypted at rest</strong> in the backend's database, and <code class="inline">list</code> returns values in plaintext.</li>
+          <li><strong>The binaries are unsigned</strong> on both macOS and Linux. Verify the SHA-256 checksum against the release page if that matters to you.</li>
+          <li><strong>You can point it somewhere else.</strong> Set <code class="inline">BACKEND_URL</code> to run the CLI against your own deployment — the backend, infrastructure, and Terraform are all in the repository.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>Secret Manager — v0.1.0</span>
+    <span><a href="https://github.com/clement880101/secret-manager/blob/main/LICENSE">Apache&nbsp;2.0</a></span>
+    <span><a href="https://github.com/clement880101/secret-manager">github.com/clement880101/secret-manager</a></span>
+  </div>
+</footer>
+
+<script>
+  // Highlight the build that matches the visitor's platform.
+  (function () {
+    var ua = navigator.userAgent;
+    var p = navigator.platform || "";
+    var os = /Mac/i.test(ua + p) ? "macos" : /Linux|X11|Android/i.test(ua + p) ? "linux" : null;
+    if (!os) return;
+
+    // macOS reports "MacIntel" on Apple silicon too, so arch is not detectable
+    // from the user agent. Suggest arm64 and leave both cards visible.
+    var arch = os === "macos"
+      ? "arm64"
+      : /aarch64|arm64/i.test(ua + p) ? "arm64" : "x86_64";
+
+    var match = document.querySelector('.dl[data-os="' + os + '"][data-arch="' + arch + '"]');
+    if (!match) return;
+    match.setAttribute("data-suggested", "1");
+
+    var hero = document.getElementById("heroDownload");
+    if (hero) {
+      hero.setAttribute("href", match.getAttribute("href"));
+      hero.textContent = "Download for " + (os === "macos" ? "macOS" : "Linux");
+    }
+  })();
+</script>
+</body>
+</html>
