@@ -29,10 +29,7 @@ def build_app(monkeypatch, tmp_path):
 
     def _build(**env):
         monkeypatch.setenv("DB_URL", f"sqlite:///{tmp_path / 'secrets.db'}")
-        monkeypatch.setenv("OAUTH_ID_GITHUB", "id")
-        monkeypatch.setenv("OAUTH_SECRET_GITHUB", "secret")
-        monkeypatch.setenv("BACKEND_URL", "http://localhost:8000")
-        for key in ("ENABLE_API_DOCS", "ENABLE_TEST_LOGIN", "ALLOWED_ORIGINS"):
+        for key in ("ENABLE_API_DOCS", "ALLOWED_ORIGINS"):
             monkeypatch.delenv(key, raising=False)
         for key, value in env.items():
             monkeypatch.setenv(key, value)
@@ -95,23 +92,4 @@ def test_wildcard_origin_never_carries_credentials(build_app):
     assert "access-control-allow-credentials" not in response.headers
 
 
-def test_test_login_route_is_off_by_default(build_app):
-    client = build_app()
 
-    assert client.post("/auth/login-test", json={"token": "x"}).status_code == 404
-
-
-def test_test_login_route_can_be_enabled(build_app, monkeypatch):
-    client = build_app(ENABLE_TEST_LOGIN="1")
-
-    auth_service = sys.modules["auth.service"]
-    monkeypatch.setattr(
-        auth_service,
-        "fetch_github_user",
-        lambda token, token_kind="oauth": {"id": 4242, "login": "u", "name": None, "avatar_url": None},
-    )
-
-    response = client.post("/auth/login-test", json={"token": "pat"})
-
-    assert response.status_code == 200
-    assert response.json()["user_id"] == "4242"

@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 def _load(monkeypatch, tmp_path, **env):
     monkeypatch.setenv("DB_URL", f"sqlite:///{tmp_path / 'auth.db'}")
-    for key in ("AUTH_MODE", "OAUTH_ID_GITHUB", "OAUTH_SECRET_GITHUB", "BOOTSTRAP_TOKEN"):
+    for key in ("BOOTSTRAP_TOKEN", "ALLOW_REGISTRATION", "AUTH_RATE_LIMIT"):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -34,32 +34,6 @@ def _load(monkeypatch, tmp_path, **env):
     local = importlib.import_module("auth.local")
     database.init_db()
     return database, settings, local
-
-
-# --- which mode a deployment ends up in -------------------------------------
-
-def test_defaults_to_local_when_nothing_is_configured(monkeypatch, tmp_path):
-    """A freshly pulled image must authenticate without any setup."""
-    _, settings, _ = _load(monkeypatch, tmp_path)
-
-    assert settings.auth_mode() == "local"
-
-
-def test_defaults_to_github_when_an_oauth_app_is_configured(monkeypatch, tmp_path):
-    """An existing GitHub deployment keeps working untouched."""
-    _, settings, _ = _load(
-        monkeypatch, tmp_path, OAUTH_ID_GITHUB="id", OAUTH_SECRET_GITHUB="secret"
-    )
-
-    assert settings.auth_mode() == "github"
-
-
-def test_explicit_mode_wins(monkeypatch, tmp_path):
-    _, settings, _ = _load(
-        monkeypatch, tmp_path, AUTH_MODE="local", OAUTH_ID_GITHUB="id", OAUTH_SECRET_GITHUB="secret"
-    )
-
-    assert settings.auth_mode() == "local"
 
 
 # --- tokens -----------------------------------------------------------------
@@ -148,7 +122,7 @@ def test_whoami_identifies_a_local_token(local_client):
     response = client.get("/auth/whoami", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
-    assert response.json() == {"user_id": "alice", "auth_mode": "local"}
+    assert response.json() == {"user_id": "alice"}
 
 
 def test_secrets_work_with_a_local_token(local_client):
@@ -172,12 +146,6 @@ def test_issuing_a_token_requires_one(local_client):
     assert response.status_code == 200
     assert local.resolve_token(response.json()["token"]) == "bob"
 
-
-def test_github_routes_are_absent_in_local_mode(local_client):
-    client, _ = local_client
-
-    assert client.post("/auth/login").status_code == 404
-    assert client.get("/auth/login/anything").status_code == 404
 
 
 def test_a_rejected_token_does_not_authenticate(local_client):
@@ -265,14 +233,6 @@ def test_registration_can_be_closed(monkeypatch, tmp_path):
     assert response.status_code == 403
 
 
-def test_registration_routes_are_absent_in_github_mode(monkeypatch, tmp_path):
-    _load(monkeypatch, tmp_path, OAUTH_ID_GITHUB="id", OAUTH_SECRET_GITHUB="secret")
-    app_module = importlib.import_module("app")
-    client = TestClient(app_module.app)
-
-    assert client.post("/auth/register", json={"username": "a", "password": "longenough"}).status_code == 404
-    assert client.post("/auth/sessions", json={"username": "a", "password": "longenough"}).status_code == 404
-
 
 def test_registered_users_can_share_with_each_other(local_client):
     client, _ = local_client
@@ -284,7 +244,7 @@ def test_registered_users_can_share_with_each_other(local_client):
     client.post("/secrets", json={"key": "k", "value": "v"}, headers=ah)
     assert client.get("/secrets", headers=bh).json() == {"items": []}
 
-    client.post("/secrets/k/share", json={"github_id": "bob"}, headers=ah)
+    client.post("/secrets/k/share", json={"user_id": "bob"}, headers=ah)
 
     assert client.get("/secrets", headers=bh).json() == {
         "items": [{"key": "k", "value": "v", "owner_id": "alice"}]

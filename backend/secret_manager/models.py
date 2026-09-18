@@ -13,7 +13,7 @@ class Secret(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String)
     value: Mapped[str] = mapped_column(String)
-    owner_id: Mapped[str] = mapped_column(ForeignKey("users.github_id"))
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"))
     shares: Mapped[List["Share"]] = relationship(
         "Share",
         back_populates="secret",
@@ -30,7 +30,7 @@ class Share(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     secret_id: Mapped[int] = mapped_column(ForeignKey("secrets.id"))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.github_id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"))
 
     secret: Mapped["Secret"] = relationship("Secret", back_populates="shares")
     user: Mapped["User"] = relationship("User", back_populates="secret_shares")

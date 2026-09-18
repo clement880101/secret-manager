@@ -7,5 +7,5 @@ class SecretIn(BaseModel):
 
 
 class ShareIn(BaseModel):
-    github_id: str
+    user_id: str
 
