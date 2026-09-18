@@ -29,8 +29,11 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
-      GH_ACCESS_TOKEN_1: ${{ secrets.GH_ACCESS_TOKEN_1 }}
-      GH_ACCESS_TOKEN_2: ${{ secrets.GH_ACCESS_TOKEN_2 }}
+      # Not secrets. They are meaningful only to integration-tests/stub_backend.py,
+      # which stands in for api.github.com so this suite does not depend on
+      # personal access tokens that expire and take CI down with them.
+      GH_ACCESS_TOKEN_1: stub-token-user-one
+      GH_ACCESS_TOKEN_2: stub-token-user-two
       BACKEND_URL: http://127.0.0.1:8000
 
     # The suite drives the real CLI against a real backend on a real database.
@@ -69,7 +72,6 @@ jobs:
           pip install -r requirements-prod.txt
 
       - name: Start the backend
-        working-directory: backend
         env:
           DB_URL: postgresql+psycopg://sm:secret@127.0.0.1:5432/sm
           # The PAT login route is what lets the suite authenticate without a
@@ -78,9 +80,11 @@ jobs:
           OAUTH_ID_GITHUB: integration-test
           OAUTH_SECRET_GITHUB: integration-test
           BACKEND_URL: http://127.0.0.1:8000
+          STUB_TOKEN_1: stub-token-user-one
+          STUB_TOKEN_2: stub-token-user-two
         run: |
           SECRET_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" \
-            nohup uvicorn app:app --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
+            nohup python integration-tests/stub_backend.py > "$RUNNER_TEMP/backend.log" 2>&1 &
           for _ in $(seq 1 30); do
             curl -sf http://127.0.0.1:8000/healthz >/dev/null && break
             sleep 1
