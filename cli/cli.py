@@ -31,6 +31,7 @@ if _TOKEN_FILE_ENV:
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
+VERSION = "0.3.0"
 TOKEN_FILE_MODE = 0o600
 
 # Talking to a remote backend over plain HTTP puts the access token and every
@@ -245,7 +246,11 @@ def _request_with_auth(method: str, path: str, scope: str = DEFAULT_SCOPE, **kwa
 
 @app.callback()
 def main() -> None:
-    """Store secrets, share them with other GitHub users, read them back."""
+    """A lightweight, distributed secret manager.
+
+    Store secrets, share them with other GitHub users, and read them back from
+    any machine. Set BACKEND_URL to point at your own deployment.
+    """
     _warn_if_insecure()
 
 
@@ -355,6 +360,12 @@ def share_secret(
         typer.echo(f"Secret `{key}` not found.")
         return
     response.raise_for_status()
+
+
+@app.command()
+def version():
+    """Print the CLI version."""
+    typer.echo(VERSION)
 
 
 @app.command()

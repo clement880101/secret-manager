@@ -1,91 +1,172 @@
-## Secret Manager
+# Secret Manager
 
-Cloud-backed secret manager with a FastAPI backend, Python CLI, end-to-end tests, and AWS infrastructure managed through Terraform. Local development mirrors CI/CD via Dev Containers and Docker.
+A lightweight, distributed secret manager. Store a secret, share it with
+another GitHub user, read it back from any machine.
 
-**[Website](https://clement880101.github.io/secret-manager/) · [Download the CLI](https://github.com/clement880101/secret-manager/releases/latest)** — prebuilt binaries for macOS and Linux (arm64 and x86_64). No Python required.
+- **One binary.** Under 10 MB, no Python, no runtime to install.
+- **One container.** Configured entirely through environment variables.
+- **Actually distributed.** No state in process memory, so it runs behind a load
+  balancer across as many replicas as you like.
+- **Your GitHub account is your identity.** No new passwords, no user table to
+  administer.
 
-> Early preview. Traffic to the default backend is plain HTTP and secrets are stored unencrypted at rest, so treat the hosted deployment as a demo rather than somewhere to keep real credentials.
+```bash
+secretmgr login
+secretmgr create db-pw hunter2
+secretmgr share db-pw 5842167
+secretmgr list
+```
 
-### Repository Layout
+[Website](https://clement880101.github.io/secret-manager/) ·
+[Download](https://github.com/clement880101/secret-manager/releases/latest) ·
+[Deployment](DEPLOYMENT.md) · [Security](SECURITY.md)
 
-| Path | Highlights |
+---
+
+## Install the CLI
+
+Download the build for your platform, make it executable, put it on your `PATH`:
+
+```bash
+curl -fsSL -o secretmgr \
+  https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-arm64
+chmod +x secretmgr && sudo mv secretmgr /usr/local/bin/
+```
+
+Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64` or
+`secretmgr-linux-arm64`. On macOS the binaries are unsigned, so clear the
+quarantine flag once: `xattr -d com.apple.quarantine /usr/local/bin/secretmgr`.
+
+Point it at your deployment and log in:
+
+```bash
+export BACKEND_URL=https://secrets.example.com
+secretmgr login
+```
+
+### Commands
+
+| Command | Does |
 | --- | --- |
-| `backend/` | FastAPI service with OAuth authentication, unit tests under `tests/`, and containerized dev parity. |
-| `cli/` | Python CLI packaged with PyInstaller for `x86_64` and `arm64`, tested via `pytest`. |
-| `integration-tests/` | Runs the baked CLI binary against deployed endpoints using GitHub access tokens. |
-| `terraform/` | One AWS deployment (ECS, load balancer, CloudFront). Optional — see `DEPLOYMENT.md` for platform-agnostic options. |
-| `deploy/` | Docker Compose stack for self-hosting: the API plus a durable Postgres. |
-| `docker-compose.yml` | Spins up backend and CLI containers together; mounts the repo for live code edits. |
+| `secretmgr login` | Authenticate with GitHub; stores a token in `~/.token` (mode `0600`). |
+| `secretmgr logout` | Remove the stored token. |
+| `secretmgr create KEY VALUE` | Store a secret you own. |
+| `secretmgr list` | Everything visible to you: yours, plus what others shared. |
+| `secretmgr share KEY GITHUB_ID` | Grant another GitHub user read access. |
+| `secretmgr delete KEY` | Delete a secret you own. |
+| `secretmgr ping` | Check the backend is reachable. |
+| `secretmgr version` | Print the CLI version. |
 
-### Local Development
+`share` takes a numeric GitHub user ID, not a username. Find one with
+`curl -s https://api.github.com/users/<login> | jq .id`.
 
-1. Install Docker Desktop and the Dev Containers extension.
-2. From Cursor/VS Code, open any component directory and choose **Reopen in Container** in the lower-left corner.
-3. Create the required `.env` files before starting services:
-   - `backend/.env`
-     - `OAUTH_ID_GITHUB`: GitHub OAuth application client ID used for authenticating users.
-     - `OAUTH_SECRET_GITHUB`: GitHub OAuth client secret paired with the client ID.
-     - `BACKEND_URL`: Public URL for the backend (matches the load balancer endpoint in production; local environments can use `http://localhost:8000`).
-   - `cli/.env`
-     - `BACKEND_URL`: Base URL the CLI uses when issuing API requests (should align with the backend dev server or the deployed endpoint).
-   - `integration-tests/.env`
-     - `GH_ACCESS_TOKEN_1`: Personal access token for GitHub interactions exercised during integration tests.
-     - `GH_ACCESS_TOKEN_2`: Secondary token used for multi-account/multi-user test flows.
-   - `terraform/.env`
-     - `AWS_ACCESS_KEY_ID`: Access key ID for the AWS IAM user or role executing Terraform.
-     - `AWS_SECRET_ACCESS_KEY`: Secret key corresponding to the access key ID.
-     - `AWS_REGION`: AWS region used for Terraform-managed resources.
-4. Use `docker-compose up` to launch backend and CLI containers locally with shared volumes.
+## Run the server
 
-Component commands:
-
-- Backend dev server:
-  ```
-  uvicorn app:app --host 0.0.0.0 --port 8000 --reload --log-level debug
-  ```
-- CLI entrypoint:
-  ```
-  python cli.py
-  ```
-- Integration tests:
-  1. Download the latest CLI binary artifact into the repo root.
-  2. Reopen `integration-tests/` in a container.
-  3. Run `pytest`.
-- Terraform: once in the container, run Terraform commands (`terraform init`, `terraform apply`, etc.) immediately.
-
-### CI/CD Pipelines
-
-- `backend-ci.yml`: Runs for pushes/PRs touching `backend/**`. Executes unit tests, builds a Docker image with GitHub OAuth build args, pushes tags to ECR, and deploys the ECS service behind `http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000`.
-- `cli-ci.yml`: Triggered for `cli/**` changes. Runs unit tests, builds PyInstaller binaries on Ubuntu `x86_64` and `arm64`, and publishes artifacts.
-- `integration-tests.yml`: Fires after successful Backend or CLI CI runs (or direct changes within `integration-tests/**`). Downloads the latest CLI artifact and executes the integration test suite using GitHub access tokens.
-- `release.yml`: Triggered by `v*` tags. Builds the CLI with PyInstaller on Linux and macOS (`x86_64` and `arm64`), smoke tests each binary, and attaches them plus `SHA256SUMS` to a GitHub Release.
-
-### Deploying
-
-The backend is a single stateless container that runs anywhere: Docker, Compose,
-a PaaS that builds from a Dockerfile, Kubernetes, or a VPS behind a reverse
-proxy. It keeps state in any SQLAlchemy-supported database (SQLite or Postgres)
-and does not terminate TLS itself, so it fits whatever your platform already
-does. See [DEPLOYMENT.md](DEPLOYMENT.md).
+The backend is a single stateless container listening on port 8000. It keeps
+everything in a SQL database and does **not** terminate TLS — whatever you put
+in front of it already does.
 
 ```bash
 docker run -d -p 8000:8000 \
   -e BACKEND_URL=https://secrets.example.com \
-  -e OAUTH_ID_GITHUB=... -e OAUTH_SECRET_GITHUB=... \
+  -e OAUTH_ID_GITHUB=... \
+  -e OAUTH_SECRET_GITHUB=... \
   -e SECRET_ENCRYPTION_KEY=... \
+  -e DB_URL=postgresql+psycopg://user:pass@host:5432/secretmgr \
   ghcr.io/clement880101/secret-manager:latest
 ```
 
-`terraform/` holds the original AWS deployment. It is one option, not the
-supported path.
+Published for `linux/amd64` and `linux/arm64`.
 
-### Security
+Or bring up the API and a Postgres together:
 
-Configuration switches, the at-rest encryption key, and the HTTPS setup are
-documented in [SECURITY.md](SECURITY.md). Defaults are the safe choice: CORS
-grants nothing, the API docs are not served, and `POST /auth/login-test` is
-disabled until a deployment opts in.
+```bash
+cd deploy && cp .env.example .env   # fill it in
+docker compose up -d
+```
 
-### License
+**[DEPLOYMENT.md](DEPLOYMENT.md) has the detail**: every configuration
+variable, choosing a database, reverse proxies, PaaS platforms, Kubernetes,
+running multiple replicas, and upgrading.
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+### Configuration at a glance
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `BACKEND_URL` | yes | Public URL clients reach. GitHub redirects the OAuth callback here. |
+| `OAUTH_ID_GITHUB` | yes | GitHub OAuth app client ID. |
+| `OAUTH_SECRET_GITHUB` | yes | GitHub OAuth app client secret. |
+| `SECRET_ENCRYPTION_KEY` | recommended | Fernet key. **Unset means values are stored in plaintext.** |
+| `DB_URL` | no | Defaults to local SQLite. Use Postgres for anything real. |
+| `ENABLE_API_DOCS` | no | Serve `/docs`. Default `false`. |
+| `ENABLE_TEST_LOGIN` | no | Serve `POST /auth/login-test`. Default `false`. |
+| `ALLOWED_ORIGINS` | no | Comma-separated CORS origins. Default: none. |
+| `TOKEN_CACHE_TTL_SECONDS` | no | Default `300`. `0` disables caching. |
+
+Create the GitHub OAuth app at <https://github.com/settings/developers> with
+callback URL `<BACKEND_URL>/auth/callback`.
+
+## How it works
+
+1. `secretmgr login` opens GitHub's authorization page and polls the backend.
+2. The backend trades the code for a GitHub token and hands it to the CLI once.
+3. Every later request carries that token; the backend verifies it against
+   GitHub and caches the result briefly.
+4. Secrets are encrypted before they reach the database, decrypted on read.
+
+Login state — the OAuth `state`, the pending session, the issued token — lives
+in the `login_sessions` table, not in process memory. A login can start on one
+replica and finish on another, and a redeploy mid-login doesn't break it. The
+`state` is claimed with a conditional `UPDATE`, so a replayed callback loses
+even when it arrives concurrently.
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `backend/` | FastAPI service, SQLAlchemy models, tests. |
+| `cli/` | The CLI, packaged with PyInstaller. |
+| `deploy/` | Docker Compose stack: API plus Postgres. |
+| `integration-tests/` | Drives the built binary against a real backend. |
+| `terraform/` | One AWS deployment. Optional — see `DEPLOYMENT.md`. |
+
+## Development
+
+Each component has a dev container; open the directory and reopen in container.
+Or work locally:
+
+```bash
+cd backend && pip install -r requirements-dev.txt && pytest
+cd cli     && pip install -r requirements-dev.txt && pytest
+```
+
+The backend's concurrency tests need a real database and skip without one:
+
+```bash
+docker run -d -p 5432:5432 -e POSTGRES_USER=sm -e POSTGRES_PASSWORD=secret \
+  -e POSTGRES_DB=sm postgres:16-alpine
+TEST_POSTGRES_URL=postgresql+psycopg://sm:secret@localhost:5432/sm pytest
+```
+
+SQLite serialises writers, so it would report success for code that is not
+actually safe to run on more than one replica.
+
+### CI/CD
+
+| Workflow | Runs |
+| --- | --- |
+| `backend-ci.yml` | Tests against a real Postgres service, then builds and deploys on `main`. |
+| `cli-ci.yml` | Tests, then builds Linux `x86_64`/`arm64` binaries. |
+| `integration-tests.yml` | Starts a backend and Postgres, builds the CLI, drives it end to end. |
+| `release.yml` | On a `v*` tag: builds every platform binary, publishes a GitHub Release with `SHA256SUMS`, and pushes a multi-arch image to GHCR. |
+
+## Status
+
+Early, and honest about it. Read the **Known limitations** in
+[SECURITY.md](SECURITY.md) before trusting it with anything that matters —
+notably that `GET /secrets` returns values in plaintext and there is no rate
+limiting.
+
+## License
+
+[Apache License 2.0](LICENSE).
