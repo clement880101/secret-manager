@@ -108,10 +108,15 @@ jobs:
     needs: build
 
     steps:
+      # Only the binaries. docker/build-push-action uploads a build record
+      # artifact of its own, and downloading everything picked that up too and
+      # failed extracting it. It passed for v0.3.0 only because the release job
+      # happened to run before the image job uploaded -- a race, not a design.
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: ${{ env.BINARY_NAME }}-*
           merge-multiple: true
 
       - name: Collect checksums
