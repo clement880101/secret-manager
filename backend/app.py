@@ -2,6 +2,7 @@ from env import load_environment
 
 load_environment()
 
+import crypto
 import settings
 from database import init_db
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from auth import router as auth_router
 from secret_manager import router as secrets_router
 
 init_db()
+crypto.warn_if_plaintext()
 
 
 # The interactive docs and the schema describe every route to anyone who asks,

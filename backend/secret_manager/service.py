@@ -2,6 +2,7 @@ from typing import List, Optional
 
 from sqlalchemy import select
 
+import crypto
 from auth.models import User
 from database import session_scope
 from .models import Secret, Share
@@ -19,7 +20,7 @@ def put_secret(owner_id: str, key: str, value: str) -> None:
         ).first()
         if existing:
             raise ValueError("Key exists for this owner")
-        secret = Secret(key=key, value=value, owner=owner)
+        secret = Secret(key=key, value=crypto.encrypt_value(value), owner=owner)
         session.add(secret)
 
 
@@ -40,7 +41,11 @@ def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
             ).first()
         if secret is None:
             return None
-        return {"key": secret.key, "value": secret.value, "owner_id": secret.owner_id}
+        return {
+            "key": secret.key,
+            "value": crypto.decrypt_value(secret.value),
+            "owner_id": secret.owner_id,
+        }
 
 
 def list_visible(ext_user_id: str) -> List[dict]:
@@ -55,7 +60,13 @@ def list_visible(ext_user_id: str) -> List[dict]:
         results = []
         for secret in owned + shared:
             owner = secret.owner
-            results.append({"key": secret.key, "value": secret.value, "owner_id": owner.github_id})
+            results.append(
+                {
+                    "key": secret.key,
+                    "value": crypto.decrypt_value(secret.value),
+                    "owner_id": owner.github_id,
+                }
+            )
         return results
 
 

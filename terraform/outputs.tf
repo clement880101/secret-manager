@@ -28,3 +28,18 @@ output "load_balancer_ip" {
   value       = aws_eip.lb.public_ip
 }
 
+
+output "api_base_url" {
+  description = "Base URL clients should use. Set the CLI's BACKEND_URL to this."
+  value       = local.api_base_url
+}
+
+output "cloudfront_domain_name" {
+  description = "CloudFront hostname serving the API over HTTPS, when enabled."
+  value       = var.enable_https ? aws_cloudfront_distribution.api[0].domain_name : null
+}
+
+output "encryption_key_secret_arn" {
+  description = "Secrets Manager entry holding the at-rest encryption key. Populate it with a Fernet key."
+  value       = aws_secretsmanager_secret.encryption_key.arn
+}
