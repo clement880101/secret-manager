@@ -57,4 +57,8 @@ Component commands:
 - `backend-ci.yml`: Runs for pushes/PRs touching `backend/**`. Executes unit tests, builds a Docker image with GitHub OAuth build args, pushes tags to ECR, and deploys the ECS service behind `http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000`.
 - `cli-ci.yml`: Triggered for `cli/**` changes. Runs unit tests, builds PyInstaller binaries on Ubuntu `x86_64` and `arm64`, and publishes artifacts.
 - `integration-tests.yml`: Fires after successful Backend or CLI CI runs (or direct changes within `integration-tests/**`). Downloads the latest CLI artifact and executes the integration test suite using GitHub access tokens.
+- `release.yml`: Triggered by `v*` tags. Builds the CLI with PyInstaller on Linux and macOS (`x86_64` and `arm64`), smoke tests each binary, and attaches them plus `SHA256SUMS` to a GitHub Release.
 
+### License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
