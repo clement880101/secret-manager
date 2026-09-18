@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import pytest
 from typer.testing import CliRunner
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -145,3 +146,75 @@ def test_loads_dotenv_if_present(monkeypatch, tmp_path):
     os.chdir(original_cwd)
     importlib.reload(cli)
 
+
+
+def test_token_file_is_not_readable_by_others(monkeypatch, tmp_path):
+    import stat as stat_module
+
+    token_file = tmp_path / "token.json"
+    monkeypatch.setattr(cli, "TOKEN_FILE", token_file)
+
+    cli._write_token("ghp-secret", "octocat")
+
+    mode = stat_module.S_IMODE(token_file.stat().st_mode)
+    assert mode == 0o600, f"token file holds a live credential but is mode {oct(mode)}"
+
+
+def test_token_file_written_over_a_loose_file_is_tightened(monkeypatch, tmp_path):
+    import stat as stat_module
+
+    token_file = tmp_path / "token.json"
+    monkeypatch.setattr(cli, "TOKEN_FILE", token_file)
+    token_file.write_text("{}")
+    token_file.chmod(0o644)
+
+    cli._write_token("ghp-secret", "octocat")
+
+    assert stat_module.S_IMODE(token_file.stat().st_mode) == 0o600
+
+
+def test_loading_a_legacy_world_readable_token_repairs_it(monkeypatch, tmp_path):
+    import stat as stat_module
+
+    token_file = tmp_path / "token.json"
+    monkeypatch.setattr(cli, "TOKEN_FILE", token_file)
+    token_file.write_text(json.dumps({"access_token": "abc", "github_id": "octocat"}))
+    token_file.chmod(0o644)
+
+    loaded = cli._load_token()
+
+    assert loaded["github_id"] == "octocat"
+    assert stat_module.S_IMODE(token_file.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("http://example.com:8000", True),
+        ("http://203.0.113.10:8000", True),
+        ("https://example.com", False),
+        ("http://localhost:8000", False),
+        ("http://127.0.0.1:8000", False),
+        ("http://[::1]:8000", False),
+    ],
+)
+def test_cleartext_remote_detection(url, expected):
+    assert cli._is_cleartext_remote(url) is expected
+
+
+def test_insecure_warning_can_be_silenced(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "API_URL", "http://example.com:8000")
+    monkeypatch.setenv("SECRETS_ALLOW_INSECURE", "1")
+
+    cli._warn_if_insecure()
+
+    assert capsys.readouterr().err == ""
+
+
+def test_insecure_warning_is_emitted_for_remote_http(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "API_URL", "http://example.com:8000")
+    monkeypatch.delenv("SECRETS_ALLOW_INSECURE", raising=False)
+
+    cli._warn_if_insecure()
+
+    assert "plain HTTP" in capsys.readouterr().err

@@ -198,3 +198,78 @@ def test_login_route_returns_auth_link(auth_test_client):
     assert query["state"][0]
 
 
+
+
+def test_verify_access_token_caches_github_lookups(monkeypatch, auth_service_module):
+    service = auth_service_module["service"]
+    monkeypatch.setenv("TOKEN_CACHE_TTL_SECONDS", "300")
+    service.TOKEN_CACHE.clear()
+
+    calls = []
+
+    def fake_fetch(access_token, token_kind="oauth"):
+        calls.append(access_token)
+        return {"id": 7, "login": "cached", "name": None, "avatar_url": None}
+
+    monkeypatch.setattr(service, "fetch_github_user", fake_fetch)
+
+    first = service.verify_access_token("tok")
+    second = service.verify_access_token("tok")
+
+    assert first == second
+    assert calls == ["tok"], "second verification should be served from cache"
+
+
+def test_verify_access_token_revalidates_after_ttl(monkeypatch, auth_service_module):
+    service = auth_service_module["service"]
+    monkeypatch.setenv("TOKEN_CACHE_TTL_SECONDS", "300")
+    service.TOKEN_CACHE.clear()
+
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "fetch_github_user",
+        lambda access_token, token_kind="oauth": (
+            calls.append(access_token),
+            {"id": 7, "login": "cached", "name": None, "avatar_url": None},
+        )[1],
+    )
+
+    service.verify_access_token("tok")
+    # Age the entry past its TTL.
+    cached_at, details = service.TOKEN_CACHE[service._token_cache_key("tok", "oauth")]
+    service.TOKEN_CACHE[service._token_cache_key("tok", "oauth")] = (cached_at - 3600, details)
+    service.verify_access_token("tok")
+
+    assert len(calls) == 2, "an expired entry must trigger a fresh GitHub lookup"
+
+
+def test_token_cache_can_be_disabled(monkeypatch, auth_service_module):
+    service = auth_service_module["service"]
+    monkeypatch.setenv("TOKEN_CACHE_TTL_SECONDS", "0")
+    service.TOKEN_CACHE.clear()
+
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "fetch_github_user",
+        lambda access_token, token_kind="oauth": (
+            calls.append(access_token),
+            {"id": 7, "login": "u", "name": None, "avatar_url": None},
+        )[1],
+    )
+
+    service.verify_access_token("tok")
+    service.verify_access_token("tok")
+
+    assert len(calls) == 2
+    assert service.TOKEN_CACHE == {}
+
+
+def test_token_cache_keys_do_not_contain_the_raw_token(auth_service_module):
+    service = auth_service_module["service"]
+
+    key = service._token_cache_key("super-secret-token", "oauth")
+
+    assert "super-secret-token" not in key
+    assert len(key) == 64

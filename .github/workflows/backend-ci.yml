@@ -92,9 +92,6 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            --build-arg OAUTH_ID_GITHUB="${OAUTH_ID_GITHUB}" \
-            --build-arg OAUTH_SECRET_GITHUB="${OAUTH_SECRET_GITHUB}" \
-            --build-arg BACKEND_URL="${BACKEND_URL}" \
             -t "${{ steps.login-ecr.outputs.image_uri }}" \
             -t "${{ steps.login-ecr.outputs.latest_image_uri }}" \
             backend

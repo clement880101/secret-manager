@@ -1,15 +1,11 @@
 FROM python:3.12-slim
 
-ARG OAUTH_ID_GITHUB
-ARG OAUTH_SECRET_GITHUB
-ARG BACKEND_URL
-
+# Configuration is supplied at runtime, never baked in. A build arg copied into
+# an ENV is written into the image layers, so anyone who can pull the image can
+# read it -- which previously exposed the GitHub OAuth client secret. The ECS
+# task definition already injects OAUTH_SECRET_GITHUB from Secrets Manager.
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    POETRY_VIRTUALENVS_CREATE=false \
-    OAUTH_ID_GITHUB=${OAUTH_ID_GITHUB} \
-    OAUTH_SECRET_GITHUB=${OAUTH_SECRET_GITHUB} \
-    BACKEND_URL=${BACKEND_URL}
+    PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
