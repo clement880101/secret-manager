@@ -135,8 +135,9 @@
   /* ---------- downloads ---------- */
   /* Explicit counts, not auto-fit: four cards must divide evenly or the 1px
      grid background shows through as an empty cell. */
-  .dl-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line-strong);border:1px solid var(--line-strong)}
-  @media(max-width:940px){.dl-grid{grid-template-columns:repeat(2,1fr)}}
+  .dl-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line-strong);border:1px solid var(--line-strong)}
+  @media(max-width:1100px){.dl-grid{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:820px){.dl-grid{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:470px){.dl-grid{grid-template-columns:1fr}}
   .dl{background:var(--ink);padding:clamp(20px,2.6vw,30px);display:flex;flex-direction:column;gap:7px;text-decoration:none;transition:background .18s;position:relative}
   .dl:hover{background:var(--ink-2)}
@@ -281,6 +282,9 @@
         </a>
         <a class="dl" data-os="linux" data-arch="arm64" href="https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-linux-arm64">
           <span class="os">Linux</span><span class="arch">arm64 · aarch64</span><span class="go">Download ↓</span>
+        </a>
+        <a class="dl" data-os="windows" data-arch="x86_64" href="https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-windows-x86_64.exe">
+          <span class="os">Windows</span><span class="arch">x86_64 · .exe</span><span class="go">Download ↓</span>
         </a>
       </div>
 
@@ -454,14 +458,18 @@ docker compose up -d</code>
   (function () {
     var ua = navigator.userAgent;
     var p = navigator.platform || "";
-    var os = /Mac/i.test(ua + p) ? "macos" : /Linux|X11|Android/i.test(ua + p) ? "linux" : null;
+    var os = /Win/i.test(ua + p) ? "windows"
+      : /Mac/i.test(ua + p) ? "macos"
+      : /Linux|X11|Android/i.test(ua + p) ? "linux" : null;
     if (!os) return;
 
     // macOS reports "MacIntel" on Apple silicon too, so arch is not detectable
     // from the user agent. Suggest arm64 and leave both cards visible.
     var arch = os === "macos"
       ? "arm64"
-      : /aarch64|arm64/i.test(ua + p) ? "arm64" : "x86_64";
+      : os === "windows"
+        ? "x86_64"
+        : /aarch64|arm64/i.test(ua + p) ? "arm64" : "x86_64";
 
     var match = document.querySelector('.dl[data-os="' + os + '"][data-arch="' + arch + '"]');
     if (!match) return;
@@ -470,7 +478,7 @@ docker compose up -d</code>
     var hero = document.getElementById("heroDownload");
     if (hero) {
       hero.setAttribute("href", match.getAttribute("href"));
-      hero.textContent = "Download for " + (os === "macos" ? "macOS" : "Linux");
+      hero.textContent = "Download for " + (os === "macos" ? "macOS" : os === "windows" ? "Windows" : "Linux");
     }
   })();
 </script>

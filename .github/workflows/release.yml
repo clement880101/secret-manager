@@ -36,6 +36,9 @@ jobs:
             target: macos-x86_64
           - runner: macos-latest
             target: macos-arm64
+          - runner: windows-latest
+            target: windows-x86_64
+            extension: ".exe"
 
     steps:
       - name: Checkout repository
@@ -62,15 +65,18 @@ jobs:
       # that cannot reach the backend.
       - name: Smoke test binary
         working-directory: cli/dist
+        shell: bash
         run: |
-          ./"${BINARY_NAME}" --help
-          ./"${BINARY_NAME}" logout
+          ./"${BINARY_NAME}${{ matrix.extension }}" --help
+          ./"${BINARY_NAME}${{ matrix.extension }}" logout
 
+      # bash on the Windows runner too, so one script covers every target.
       - name: Stage artifact
         working-directory: cli/dist
+        shell: bash
         run: |
-          mv "${BINARY_NAME}" "${BINARY_NAME}-${{ matrix.target }}"
-          shasum -a 256 "${BINARY_NAME}-${{ matrix.target }}" > "${BINARY_NAME}-${{ matrix.target }}.sha256"
+          mv "${BINARY_NAME}${{ matrix.extension }}" "${BINARY_NAME}-${{ matrix.target }}${{ matrix.extension }}"
+          shasum -a 256 "${BINARY_NAME}-${{ matrix.target }}${{ matrix.extension }}" > "${BINARY_NAME}-${{ matrix.target }}.sha256"
           cat "${BINARY_NAME}-${{ matrix.target }}.sha256"
 
       - name: Upload artifact
@@ -78,7 +84,7 @@ jobs:
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
           path: |
-            cli/dist/${{ env.BINARY_NAME }}-${{ matrix.target }}
+            cli/dist/${{ env.BINARY_NAME }}-${{ matrix.target }}${{ matrix.extension }}
             cli/dist/${{ env.BINARY_NAME }}-${{ matrix.target }}.sha256
           retention-days: 7
           if-no-files-found: error
