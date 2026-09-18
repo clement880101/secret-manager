@@ -59,6 +59,13 @@ Component commands:
 - `integration-tests.yml`: Fires after successful Backend or CLI CI runs (or direct changes within `integration-tests/**`). Downloads the latest CLI artifact and executes the integration test suite using GitHub access tokens.
 - `release.yml`: Triggered by `v*` tags. Builds the CLI with PyInstaller on Linux and macOS (`x86_64` and `arm64`), smoke tests each binary, and attaches them plus `SHA256SUMS` to a GitHub Release.
 
+### Security
+
+Configuration switches, the at-rest encryption key, and the HTTPS setup are
+documented in [SECURITY.md](SECURITY.md). Defaults are the safe choice: CORS
+grants nothing, the API docs are not served, and `POST /auth/login-test` is
+disabled until a deployment opts in.
+
 ### License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).

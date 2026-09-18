@@ -1,6 +1,8 @@
 import json
 import os
+import stat
 import time
+import urllib.parse
 import webbrowser
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -15,7 +17,11 @@ if DOTENV_PATH.exists():
 
 app = typer.Typer(add_completion=False)
 
-API_URL = os.environ.get("BACKEND_URL", "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000").rstrip("/")
+DEFAULT_BACKEND_URL = "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000"
+# An env var that is set but empty must fall back to the default rather than
+# producing a hostless URL. CI passes BACKEND_URL from a repository variable,
+# which expands to "" on a fork that has not defined one.
+API_URL = (os.environ.get("BACKEND_URL") or "").strip().rstrip("/") or DEFAULT_BACKEND_URL
 DEFAULT_SCOPE = "read:user user:email"
 SESSION_TTL_SECONDS = 600
 POLL_INTERVAL_SECONDS = 3.0
@@ -25,17 +31,67 @@ if _TOKEN_FILE_ENV:
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
+TOKEN_FILE_MODE = 0o600
+
+# Talking to a remote backend over plain HTTP puts the access token and every
+# secret value on the wire in the clear. Loopback is exempt: it never leaves
+# the machine, and it is how the backend is developed locally.
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def _is_cleartext_remote(url: str) -> bool:
+    """True when `url` would send credentials unencrypted to another host."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "http":
+        return False
+    return (parsed.hostname or "") not in LOCAL_HOSTS
+
+
+def _warn_if_insecure() -> None:
+    """Print a one-line warning when the configured backend is cleartext HTTP."""
+    if not _is_cleartext_remote(API_URL):
+        return
+    if os.environ.get("SECRETS_ALLOW_INSECURE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return
+    typer.echo(
+        f"Warning: {API_URL} is plain HTTP. Your access token and secret values "
+        "will cross the network unencrypted. Set BACKEND_URL to an https:// "
+        "endpoint, or set SECRETS_ALLOW_INSECURE=1 to silence this.",
+        err=True,
+    )
+
+
+def _secure_token_file() -> None:
+    """Restrict the token file to the current user (best effort)."""
+    try:
+        TOKEN_FILE.chmod(TOKEN_FILE_MODE)
+    except OSError:
+        pass
 
 
 def _write_token(token: str, github_id: str) -> None:
+    """Persist the access token readable only by the current user.
+
+    The file holds a live GitHub credential, so it is created with mode 0600
+    rather than whatever the process umask would give it. os.open with O_CREAT
+    sets the mode at creation time, closing the window in which a fresh file
+    would briefly be world-readable.
+    """
     payload = {"access_token": token, "github_id": github_id, "created_at": int(time.time())}
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_FILE.write_text(json.dumps(payload, indent=2))
+    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, TOKEN_FILE_MODE)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(json.dumps(payload, indent=2))
+    # An existing file keeps its old mode through O_CREAT, so tighten it too.
+    _secure_token_file()
 
 
 def _load_token() -> Optional[Dict[str, str]]:
     if not TOKEN_FILE.exists():
         return None
+    # Tokens written by an older build were left world-readable; repair on read.
+    if stat.S_IMODE(TOKEN_FILE.stat().st_mode) != TOKEN_FILE_MODE:
+        _secure_token_file()
     try:
         data = json.loads(TOKEN_FILE.read_text())
     except json.JSONDecodeError:
@@ -185,6 +241,12 @@ def _request_with_auth(method: str, path: str, scope: str = DEFAULT_SCOPE, **kwa
             TOKEN_FILE.unlink()
         raise typer.Exit(1)
     return response
+
+
+@app.callback()
+def main() -> None:
+    """Store secrets, share them with other GitHub users, read them back."""
+    _warn_if_insecure()
 
 
 @app.command()
