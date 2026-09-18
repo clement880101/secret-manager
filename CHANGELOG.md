@@ -9,14 +9,15 @@ and contacts nothing outside itself.
   `OAUTH_ID_GITHUB`, `OAUTH_SECRET_GITHUB` and `ENABLE_TEST_LOGIN`.
 - `httpx` is no longer a runtime dependency — the backend makes no outbound
   HTTP calls at all.
-- The share API field is `user_id` rather than `github_id`, and the CLI token
-  file stores `user_id`. Token files written by older versions are still read.
+- The share API field is `user_id` rather than `github_id`, the users table's
+  primary key is `user_id`, and the CLI token file stores `user_id`.
 - The integration suite no longer stubs anything: it runs the real application
   and registers the accounts it needs.
 
-**Upgrading:** accounts that signed in with GitHub cannot log in any more and
-have to register. Secrets they own remain in the database under their old
-identifier.
+**Upgrading:** this changes the schema without a migration. Existing databases
+have to be recreated, and anyone logged in has to log in again. The image
+defaults to SQLite on the container's volume, so unless you set `DB_URL` to
+something durable there was nothing to carry over anyway.
 
 ## v0.4.0
 

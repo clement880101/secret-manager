@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 class User(Base):
     __tablename__ = "users"
 
-    # A username on this deployment. Named user_id because that is what it is.
-    user_id: Mapped[str] = mapped_column("github_id", String, primary_key=True)
+    # A username on this deployment.
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -65,7 +65,7 @@ class ApiToken(Base):
     __tablename__ = "api_tokens"
 
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.github_id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), index=True)
     label: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[float] = mapped_column(Float)
 
@@ -84,7 +84,7 @@ class Credential(Base):
 
     __tablename__ = "credentials"
 
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.github_id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), primary_key=True)
     # scrypt, encoded with its parameters and salt. See auth.passwords.
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[float] = mapped_column(Float)
