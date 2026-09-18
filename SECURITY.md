@@ -58,6 +58,9 @@ builds were mode `0644`; the CLI repairs the mode when it next reads the file.
   exposes every value the account can see at once.
 - **No rate limiting.** A valid token can be replayed as fast as the service
   will answer.
+- **Token verification is cached per process**, so a token revoked on GitHub
+  stays accepted for up to `TOKEN_CACHE_TTL_SECONDS` on each replica. Set it to
+  `0` where immediate revocation matters.
 - **SQLite is the default** and does not survive a container being replaced.
   Set `DB_URL` to Postgres for any real deployment; see `DEPLOYMENT.md`.
 - **Released binaries are unsigned.** Verify the published `SHA256SUMS`.

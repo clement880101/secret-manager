@@ -35,3 +35,9 @@ class Share(Base):
     secret: Mapped["Secret"] = relationship("Secret", back_populates="shares")
     user: Mapped["User"] = relationship("User", back_populates="secret_shares")
 
+    # Concurrent shares of the same secret to the same person otherwise each
+    # pass the "already shared?" check and all insert. Applied to databases
+    # created from here on; existing ones keep whatever rows they have, which
+    # list_visible de-duplicates on read.
+    __table_args__ = (UniqueConstraint("secret_id", "user_id", name="uix_share_secret_user"),)
+
