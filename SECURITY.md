@@ -58,8 +58,6 @@ builds were mode `0644`; the CLI repairs the mode when it next reads the file.
   exposes every value the account can see at once.
 - **No rate limiting.** A valid token can be replayed as fast as the service
   will answer.
-- **Login state is in process memory**, so it does not survive a restart and is
-  incorrect across more than one task.
-- **SQLite on ephemeral Fargate storage.** Data does not survive task
-  replacement. Use a durable database before storing anything you need back.
+- **SQLite is the default** and does not survive a container being replaced.
+  Set `DB_URL` to Postgres for any real deployment; see `DEPLOYMENT.md`.
 - **Released binaries are unsigned.** Verify the published `SHA256SUMS`.

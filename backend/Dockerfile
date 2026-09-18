@@ -9,13 +9,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        build-essential \
-        libffi-dev \
-        libssl-dev \
-        sqlite3 && \
-    rm -rf /var/lib/apt/lists/*
+# No build toolchain: every dependency publishes a manylinux wheel, and
+# psycopg[binary] bundles its own libpq. Installing build-essential, libffi-dev,
+# libssl-dev and sqlite3 added roughly 400MB to an image that never compiled
+# anything, which is a long pull on every platform this gets deployed to.
 
 COPY requirements-prod.txt /tmp/requirements-prod.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-prod.txt
