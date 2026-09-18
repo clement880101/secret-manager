@@ -28,6 +28,56 @@ network access. Users sign themselves up.
 
 ---
 
+## What you need to run it
+
+**A container runtime. That is the whole list.**
+
+```bash
+docker run -d -p 8000:8000 -v secretmgr-data:/data \
+  ghcr.io/clement880101/secret-manager:latest
+```
+
+No database to provision, no OAuth app to register, no TLS certificate, no
+config file, no accounts to create in advance. The volume is the one thing not
+to skip: without it the database lives in the container's writable layer and
+goes away with the container.
+
+Then, depending on what you are doing:
+
+| If you want | Add |
+| --- | --- |
+| Anything you would miss | `SECRET_ENCRYPTION_KEY`, or values are stored unencrypted |
+| Clients on other machines | `BACKEND_URL`, and TLS in front of it |
+| To not be publicly signup-able | `ALLOW_REGISTRATION=false` |
+| More than one replica | `DB_URL` pointing at Postgres, and a fixed `BOOTSTRAP_TOKEN` |
+| A specific listen port | `PORT` — honoured automatically on Cloud Run and similar |
+
+For the CLI: one binary, no runtime. Set `BACKEND_URL` to your own server —
+without it the CLI talks to the project's demo deployment, which is not where
+you want your secrets.
+
+## Production checklist
+
+Working through this is the difference between a demo and a deployment:
+
+- [ ] **`SECRET_ENCRYPTION_KEY` set**, and backed up somewhere you can get it
+      from. Losing it makes every stored value unreadable, permanently.
+- [ ] **TLS in front.** The service speaks plain HTTP by design; terminate at
+      your proxy, ingress or platform. The CLI warns when it is talking
+      cleartext to a remote host.
+- [ ] **`DB_URL` pointing at Postgres**, not the bundled SQLite, if you run more
+      than one replica or your platform replaces containers.
+- [ ] **Database backed up.** Nothing here backs itself up.
+- [ ] **`ALLOW_REGISTRATION=false`** if the deployment is reachable from the
+      open internet and you know who should have accounts.
+- [ ] **`BOOTSTRAP_TOKEN` set and then rotated**, or the first token sits in
+      your logs.
+- [ ] **`ENABLE_API_DOCS` left off**, so the schema is not published.
+- [ ] Checksums verified on any binary you distribute internally.
+
+Read [SECURITY.md](SECURITY.md) for what this does *not* do. There are real
+limitations and they are listed plainly.
+
 ## Install the CLI
 
 Download the build for your platform, make it executable, put it on your `PATH`:
