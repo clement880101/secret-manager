@@ -2,6 +2,18 @@
 
 ## v0.7.3
 
+**Key rotation silently skipped secrets and made them unreadable.** Rotating
+1200 secrets in batches of 500 left 500 of them on the old key while reporting
+that it had examined all 1200. Dropping the retired key then made those 500
+permanently unrecoverable — in the procedure whose entire purpose is to prevent
+that.
+
+The cause was paging with `OFFSET` and no `ORDER BY`. Rewriting a row writes a
+new tuple, which moves it, so later pages skipped rows earlier pages had pushed
+past. It now pages by primary key, which does not move, and counts what is left
+afterwards rather than assuming. It exits non-zero if anything remains.
+
+
 Client errors read as messages rather than crashes. Sharing a secret you did
 not own answered 400, which no command handled, so the CLI printed a
 PyInstaller traceback instead of "Secret not found for owner". Every command

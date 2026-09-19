@@ -46,8 +46,9 @@ docker run --rm -e DB_URL=... -e SECRET_ENCRYPTION_KEY=<new> \
   ghcr.io/clement880101/secret-manager:latest python rotate_keys.py
 ```
 
-It reports how many it rewrote. When that reaches zero, nothing is left on the
-old key. `SECRET_ENCRYPTION_KEYS_RETIRED` takes a comma-separated list, so more
+It reports how many it rewrote and, more importantly, how many are still on an
+old key. **Do not drop `SECRET_ENCRYPTION_KEYS_RETIRED` until that reaches
+zero** — it exits non-zero if anything is left. `SECRET_ENCRYPTION_KEYS_RETIRED` takes a comma-separated list, so more
 than one generation can be in flight.
 
 **Swapping the key in one step, without retiring the old one, makes every
