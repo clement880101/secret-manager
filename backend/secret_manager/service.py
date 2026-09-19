@@ -47,6 +47,13 @@ def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
 
 
 def list_visible(ext_user_id: str) -> List[dict]:
+    """List what a user can see, without the values.
+
+    Returning every value here meant one stolen token exposed everything that
+    account could reach in a single request, and nothing in the audit trail
+    could distinguish "listed their keys" from "read all their secrets".
+    Reading a value is now a deliberate request for one key at a time.
+    """
     with session_scope() as session:
         me = session.get(User, ext_user_id)
         if me is None:
@@ -61,12 +68,11 @@ def list_visible(ext_user_id: str) -> List[dict]:
             if secret.id in seen:
                 continue
             seen.add(secret.id)
-            owner = secret.owner
             results.append(
                 {
                     "key": secret.key,
-                    "value": crypto.decrypt_value(secret.value),
-                    "owner_id": owner.user_id,
+                    "owner_id": secret.owner.user_id,
+                    "shared": secret.owner_id != ext_user_id,
                 }
             )
         return results

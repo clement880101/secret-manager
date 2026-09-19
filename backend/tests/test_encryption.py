@@ -60,7 +60,8 @@ def test_roundtrip_through_the_service(monkeypatch, tmp_path):
     service.put_secret("alice", "k", "hunter2")
 
     assert service.get_secret_for_user("alice", "k")["value"] == "hunter2"
-    assert service.list_visible("alice")[0]["value"] == "hunter2"
+    # list deliberately carries no values.
+    assert service.list_visible("alice") == [{"key": "k", "owner_id": "alice", "shared": False}]
 
 
 def test_shared_secret_decrypts_for_the_recipient(monkeypatch, tmp_path):
@@ -93,8 +94,8 @@ def test_legacy_plaintext_rows_stay_readable_after_a_key_is_added(monkeypatch, t
     assert service.get_secret_for_user("alice", "legacy")["value"] == "old-value"
 
     service.put_secret("alice", "fresh", "new-value")
-    values = {item["key"]: item["value"] for item in service.list_visible("alice")}
-    assert values == {"legacy": "old-value", "fresh": "new-value"}
+    assert {item["key"] for item in service.list_visible("alice")} == {"legacy", "fresh"}
+    assert service.get_secret_for_user("alice", "fresh")["value"] == "new-value"
 
 
 def test_ciphertext_without_a_key_fails_loudly(monkeypatch, tmp_path):

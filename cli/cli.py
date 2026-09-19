@@ -27,7 +27,7 @@ if _TOKEN_FILE_ENV:
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 TOKEN_FILE_MODE = 0o600
 
 # Talking to a remote backend over plain HTTP puts the access token and every
@@ -359,19 +359,14 @@ def delete_secret(key: str):
 @app.command("list")
 def list_secrets():
     """
-    List secrets visible to the current user.
+    List the secrets you can see. Values are not included.
+
+    Reading a value is a separate, deliberate request: `secretmgr get KEY`.
     """
     response = _request_with_auth("GET", "/secrets")
     response.raise_for_status()
     payload = response.json()
-    if isinstance(payload, dict):
-        items = payload.get("items") or payload.get("results") or payload.get("data")
-        if items is None:
-            items = []
-    elif isinstance(payload, list):
-        items = payload
-    else:
-        items = []
+    items = payload.get("items", []) if isinstance(payload, dict) else payload or []
 
     if not items:
         typer.echo("No secrets found.")
@@ -379,9 +374,40 @@ def list_secrets():
 
     for item in items:
         key = item.get("key", "<unknown>")
-        value = item.get("value", "<hidden>")
-        owner = item.get("owner_id") or item.get("owner") or "unknown"
-        typer.echo(f"{key} = {value} (owner: {owner})")
+        owner = item.get("owner_id") or "unknown"
+        note = f" (shared by {owner})" if item.get("shared") else ""
+        typer.echo(f"{key}{note}")
+
+
+@app.command("get")
+def get_secret(key: str):
+    """
+    Print the value of one secret.
+    """
+    response = _request_with_auth("GET", f"/secrets/{key}")
+    if response.status_code == 403:
+        typer.echo(f"No secret `{key}` that you can read.")
+        raise typer.Exit(1)
+    response.raise_for_status()
+    typer.echo(response.json()["value"])
+
+
+@app.command("audit")
+def audit_log(limit: int = typer.Option(20, "--limit", help="How many events to show.")):
+    """
+    Show recent activity on your account, newest first.
+    """
+    response = _request_with_auth("GET", "/auth/audit", params={"limit": limit})
+    response.raise_for_status()
+    items = response.json().get("items", [])
+    if not items:
+        typer.echo("No activity recorded.")
+        return
+    for item in items:
+        when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(item["at"]))
+        target = f"  {item['target']}" if item.get("target") else ""
+        where = f"  from {item['address']}" if item.get("address") else ""
+        typer.echo(f"{when}  {item['action']}{target}{where}")
 
 
 @app.command("share")
