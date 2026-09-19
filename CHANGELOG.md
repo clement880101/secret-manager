@@ -2,6 +2,13 @@
 
 ## v0.7.1
 
+Removed the AWS deployment entirely. `terraform/`, the ECS deploy job, and the
+AWS credentials and variables that lived in repository settings are gone: the
+account they pointed at was not this project's. CI builds and tests; it deploys
+nowhere. The GitHub OAuth secrets and the `BACKEND_URL` variable went too,
+unused since GitHub sign-in was removed.
+
+
 **Breaking, and deliberately so.** `BACKEND_URL` is now required.
 
 The CLI shipped with a default pointing at the project's own AWS deployment,
