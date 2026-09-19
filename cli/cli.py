@@ -173,7 +173,10 @@ def _ensure_token() -> Dict[str, str]:
     token_data = _load_token()
     if token_data:
         return token_data
-    typer.echo("Not logged in. Run `secretmgr register <name>` or `secretmgr login <name>`.")
+    typer.echo(
+        "Not logged in. Run `secretmgr register <name>` or `secretmgr login <name>`.",
+        err=True,
+    )
     raise typer.Exit(1)
 
 
@@ -187,7 +190,7 @@ def _request_with_auth(method: str, path: str, **kwargs) -> httpx.Response:
     kwargs.setdefault("timeout", HTTP_TIMEOUT)
     response = httpx.request(method, url, **kwargs)
     if response.status_code == 401:
-        typer.echo("Session expired or revoked. Log in again.")
+        typer.echo("Session expired or revoked. Log in again.", err=True)
         if TOKEN_FILE.exists():
             TOKEN_FILE.unlink()
         raise typer.Exit(1)
@@ -208,7 +211,7 @@ def _login_with_api_token(token: str) -> Dict[str, str]:
     """Store a token the server issued, after confirming who it identifies."""
     token = token.strip()
     if not token:
-        typer.echo("Token is empty.")
+        typer.echo("Token is empty.", err=True)
         raise typer.Exit(1)
     try:
         response = httpx.get(
@@ -217,15 +220,15 @@ def _login_with_api_token(token: str) -> Dict[str, str]:
             timeout=HTTP_TIMEOUT,
         )
     except httpx.RequestError as exc:
-        typer.echo(f"Unable to reach API at {API_URL}: {exc}")
+        typer.echo(f"Unable to reach API at {API_URL}: {exc}", err=True)
         raise typer.Exit(1)
     if response.status_code == 401:
-        typer.echo("That token was rejected. It may have been revoked.")
+        typer.echo("That token was rejected. It may have been revoked.", err=True)
         raise typer.Exit(1)
     response.raise_for_status()
     user_id = response.json().get("user_id")
     if not user_id:
-        typer.echo("Server did not say who this token belongs to.")
+        typer.echo("Server did not say who this token belongs to.", err=True)
         raise typer.Exit(1)
     _write_token(token, user_id)
     typer.echo(f"Logged in as {user_id}")
@@ -241,7 +244,7 @@ def _post_credentials(path: str, username: str, password: str) -> Dict[str, str]
             timeout=HTTP_TIMEOUT,
         )
     except httpx.RequestError as exc:
-        typer.echo(f"Unable to reach API at {API_URL}: {exc}")
+        typer.echo(f"Unable to reach API at {API_URL}: {exc}", err=True)
         raise typer.Exit(1)
 
     if response.status_code in (400, 401, 403):
@@ -250,7 +253,7 @@ def _post_credentials(path: str, username: str, password: str) -> Dict[str, str]
             detail = response.json().get("detail", "")
         except ValueError:
             pass
-        typer.echo(detail or "Login failed.")
+        typer.echo(detail or "Login failed.", err=True)
         raise typer.Exit(1)
     response.raise_for_status()
 
@@ -294,10 +297,10 @@ def login(
     Give a username to sign in with a password, or --token to use a token the
     server issued.
     """
-    if TOKEN_FILE.exists():
-        typer.echo("Existing session detected; starting fresh login.")
-        TOKEN_FILE.unlink()
-
+    # Deliberately not clearing the stored token here. Deleting it up front
+    # meant a mistyped password logged you out: the file was gone before the
+    # server was ever asked, and a refused login left no session at all. A
+    # successful login overwrites it anyway, so there is nothing to clear.
     if token:
         _login_with_api_token(token)
         return
@@ -309,7 +312,7 @@ def login(
         typer.echo(f"Logged in as {payload['user_id']}")
         return
 
-    typer.echo("Give a username, or --token. See `secretmgr login --help`.")
+    typer.echo("Give a username, or --token. See `secretmgr login --help`.", err=True)
     raise typer.Exit(1)
 
 
@@ -353,7 +356,7 @@ def passwd(
             detail = response.json().get("detail", "")
         except ValueError:
             pass
-        typer.echo(detail or "Could not change password.")
+        typer.echo(detail or "Could not change password.", err=True)
         raise typer.Exit(1)
     response.raise_for_status()
     typer.echo("Password changed. Existing tokens still work; revoke any you no longer trust.")
@@ -371,7 +374,8 @@ def revoke(token: str = typer.Argument(..., help="The token to revoke.")):
     if response.json().get("revoked"):
         typer.echo("Token revoked.")
     else:
-        typer.echo("No such token; nothing to revoke.")
+        typer.echo("No such token; nothing to revoke.", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -402,19 +406,38 @@ def logout():
 @app.command("create")
 def create_secret(key: str, value: str):
     """
-    Create or update a secret key/value pair.
+    Create a secret. Use `update` to change one that exists.
     """
     response = _request_with_auth("POST", "/secrets", json={"key": key, "value": value})
     if response.status_code == 200:
         typer.echo(f"Stored secret `{key}`.")
         return
     if response.status_code == 409:
-        typer.echo(f"Secret `{key}` already exists.")
+        typer.echo(f"Secret `{key}` already exists. Use `update` to change it.", err=True)
         raise typer.Exit(1)
     if response.status_code == 422:
         # A rejected key or value should read as an error, not a stack trace.
-        typer.echo(_validation_message(response, key))
+        typer.echo(_validation_message(response, key), err=True)
         raise typer.Exit(1)
+    response.raise_for_status()
+
+
+@app.command("update")
+def update_secret(key: str, value: str):
+    """
+    Replace the value of a secret, keeping who it is shared with.
+    """
+    response = _request_with_auth(
+        "PUT", f"/secrets/{_quote(key)}", json={"value": value}
+    )
+    if response.status_code == 200:
+        typer.echo(f"Updated secret `{key}`.")
+        return
+    if response.status_code == 422:
+        typer.echo(_validation_message(response, key), err=True)
+        raise typer.Exit(1)
+    if response.status_code >= 400:
+        _fail(response, f"No secret `{key}` that you can update.")
     response.raise_for_status()
 
 
@@ -427,11 +450,11 @@ def delete_secret(key: str):
     if response.status_code == 200:
         typer.echo(f"Deleted secret `{key}`.")
         return
-    if response.status_code == 404:
-        typer.echo(f"Secret `{key}` not found.")
-        return
     if response.status_code >= 400:
-        _fail(response, f"Could not delete `{key}`.")
+        # Including 404: nothing was deleted, so this cannot exit 0. It did,
+        # which meant `secretmgr delete k && ...` ran the rest of the line
+        # after failing to delete anything.
+        _fail(response, f"No secret `{key}` that you can delete.")
     response.raise_for_status()
 
 
@@ -530,7 +553,7 @@ def ping():
     try:
         response = httpx.get(f"{_backend()}/healthz", timeout=HTTP_TIMEOUT)
     except httpx.RequestError as exc:
-        typer.echo(f"Unable to reach API: {exc}")
+        typer.echo(f"Unable to reach API: {exc}", err=True)
         raise typer.Exit(1)
 
     if response.status_code == 200:
@@ -543,13 +566,13 @@ def ping():
         if status is True:
             typer.echo("API healthy.")
         elif status is False:
-            typer.echo("API unhealthy response.")
+            typer.echo("API unhealthy response.", err=True)
             raise typer.Exit(1)
         else:
-            typer.echo(f"API responded with unexpected payload: {payload}")
+            typer.echo(f"API responded with unexpected payload: {payload}", err=True)
         return
 
-    typer.echo(f"Unexpected response ({response.status_code}): {response.text}")
+    typer.echo(f"Unexpected response ({response.status_code}): {response.text}", err=True)
     raise typer.Exit(1)
 
 

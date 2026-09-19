@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Request
 import audit
 from auth.service import parse_token
 from . import service
-from .schemas import SecretIn, ShareIn
+from .schemas import SecretIn, SecretValueIn, ShareIn
 
 router = APIRouter(prefix="/secrets", tags=["secrets"])
 
@@ -28,6 +28,18 @@ def create_secret(request: Request, payload: SecretIn):
     except ValueError:
         raise HTTPException(409, "Key exists for this owner")
     audit.record(audit.SECRET_CREATE, user_id, payload.key, client_address(request))
+    return {"ok": True}
+
+
+@router.put("/{key}")
+def update_secret(request: Request, key: str, payload: SecretValueIn):
+    """Change the value of a secret without disturbing who it is shared with."""
+    user_id = current_user_id(request)
+    try:
+        service.update_secret(user_id, key, payload.value)
+    except LookupError:
+        raise HTTPException(404, "Secret not found")
+    audit.record(audit.SECRET_UPDATE, user_id, key, client_address(request))
     return {"ok": True}
 
 
