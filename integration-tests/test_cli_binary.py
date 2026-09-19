@@ -163,7 +163,12 @@ def test_create_list_delete_secret(ensure_user1):
         list_result = _run_cli(context.env, "list")
         _ensure_success(list_result)
         assert secret_key in list_result.stdout
-        assert secret_value in list_result.stdout
+        # list deliberately carries no values; reading one is its own request.
+        assert secret_value not in list_result.stdout
+
+        get_result = _run_cli(context.env, "get", secret_key)
+        _ensure_success(get_result)
+        assert secret_value in get_result.stdout
     finally:
         delete_result = _run_cli(context.env, "delete", secret_key)
         if delete_result.returncode == 0:
@@ -197,6 +202,15 @@ def test_share_secret(ensure_user1, ensure_user2):
         _ensure_success(share_result)
         assert f"Granted access to `{secret_key}`" in share_result.stdout
         assert share_target in share_result.stdout
+
+        # The recipient can read the value, which is the point of sharing.
+        context_user1.logout()
+        context_user1.login("user2")
+        recipient_get = _run_cli(context_user1.env, "get", secret_key)
+        _ensure_success(recipient_get)
+        assert secret_value in recipient_get.stdout
+        context_user1.logout()
+        context_user1.login("user1")
     finally:
         delete_result = _run_cli(context_user1.env, "delete", secret_key)
         if delete_result.returncode != 0:

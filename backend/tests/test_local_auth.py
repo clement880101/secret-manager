@@ -131,8 +131,9 @@ def test_secrets_work_with_a_local_token(local_client):
 
     assert client.post("/secrets", json={"key": "k", "value": "v"}, headers=headers).status_code == 200
     assert client.get("/secrets", headers=headers).json() == {
-        "items": [{"key": "k", "value": "v", "owner_id": "alice"}]
+        "items": [{"key": "k", "owner_id": "alice", "shared": False}]
     }
+    assert client.get("/secrets/k", headers=headers).json()["value"] == "v"
 
 
 def test_issuing_a_token_requires_one(local_client):
@@ -247,8 +248,9 @@ def test_registered_users_can_share_with_each_other(local_client):
     client.post("/secrets/k/share", json={"user_id": "bob"}, headers=ah)
 
     assert client.get("/secrets", headers=bh).json() == {
-        "items": [{"key": "k", "value": "v", "owner_id": "alice"}]
+        "items": [{"key": "k", "owner_id": "alice", "shared": True}]
     }
+    assert client.get("/secrets/k", headers=bh).json()["value"] == "v"
     # Sharing grants read, not control.
     assert client.delete("/secrets/k", headers=bh).status_code == 404
 

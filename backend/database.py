@@ -28,6 +28,7 @@ def session_scope():
 
 
 def init_db() -> None:
+    import audit_models  # noqa: F401
     from auth import models as auth_models  # noqa: F401
     from secret_manager import models as secret_models  # noqa: F401
 

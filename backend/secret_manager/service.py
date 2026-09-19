@@ -18,8 +18,15 @@ def put_secret(owner_id: str, key: str, value: str) -> None:
         ).first()
         if existing:
             raise ValueError("Key exists for this owner")
-        secret = Secret(key=key, value=crypto.encrypt_value(value), owner=owner)
-        session.add(secret)
+        session.add(Secret(key=key, value=crypto.encrypt_value(value), owner=owner))
+        try:
+            session.flush()
+        except IntegrityError:
+            # Two callers passed the check above before either inserted. The
+            # unique constraint on (owner_id, key) is the authority, so treat
+            # losing that race as what it is: the key already exists.
+            session.rollback()
+            raise ValueError("Key exists for this owner") from None
 
 
 def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
@@ -47,6 +54,13 @@ def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
 
 
 def list_visible(ext_user_id: str) -> List[dict]:
+    """List what a user can see, without the values.
+
+    Returning every value here meant one stolen token exposed everything that
+    account could reach in a single request, and nothing in the audit trail
+    could distinguish "listed their keys" from "read all their secrets".
+    Reading a value is now a deliberate request for one key at a time.
+    """
     with session_scope() as session:
         me = session.get(User, ext_user_id)
         if me is None:
@@ -61,12 +75,11 @@ def list_visible(ext_user_id: str) -> List[dict]:
             if secret.id in seen:
                 continue
             seen.add(secret.id)
-            owner = secret.owner
             results.append(
                 {
                     "key": secret.key,
-                    "value": crypto.decrypt_value(secret.value),
-                    "owner_id": owner.user_id,
+                    "owner_id": secret.owner.user_id,
+                    "shared": secret.owner_id != ext_user_id,
                 }
             )
         return results

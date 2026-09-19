@@ -9,6 +9,8 @@
 <meta property="og:description" content="A lightweight, distributed secret manager. One binary under 10MB, one container, any database.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2218%22 fill=%22%2308090b%22/><rect x=%2222%22 y=%2246%22 width=%2256%22 height=%2216%22 fill=%22%23ffb000%22/></svg>">
+<link rel="canonical" href="https://clement880101.github.io/secret-manager/">
+<link rel="sitemap" type="application/xml" href="sitemap.xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;700&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500&display=swap" rel="stylesheet">
@@ -172,14 +174,16 @@
   @media(max-width:1100px){.dl-grid{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:820px){.dl-grid{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:470px){.dl-grid{grid-template-columns:1fr}}
-  .dl{background:var(--ink);padding:clamp(20px,2.6vw,30px);display:flex;flex-direction:column;gap:7px;text-decoration:none;transition:background .18s;position:relative}
+  /* Reserve the badge's row on every card, suggested or not, so it can never
+     overlap the text and the cards stay the same height either way. */
+  .dl{background:var(--ink);padding:clamp(20px,2.6vw,30px);display:flex;flex-direction:column;gap:7px;text-decoration:none;transition:background .18s;position:relative;padding-top:calc(clamp(20px,2.6vw,30px) + 22px)}
   .dl:hover{background:var(--ink-2)}
   .dl .os{font-family:var(--display);font-weight:600;font-size:20px;letter-spacing:-.01em}
   .dl .arch{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.06em}
   .dl .go{font-family:var(--mono);font-size:12.5px;color:var(--amber);margin-top:10px;letter-spacing:.05em}
   .dl[data-suggested="1"]::after{
     content:"YOUR SYSTEM";position:absolute;
-    bottom:clamp(20px,2.6vw,30px);right:clamp(20px,2.6vw,30px);
+    top:clamp(20px,2.6vw,30px);left:clamp(20px,2.6vw,30px);
     font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;color:var(--ink);background:var(--amber);padding:3px 7px;
   }
   .after{margin-top:26px;display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
@@ -252,7 +256,7 @@
 <main id="top">
 
   <div class="wrap hero hero-fade">
-    <p class="eyebrow">Lightweight &amp; distributed <span>/ self-hosted / v0.5.0</span></p>
+    <p class="eyebrow">Lightweight &amp; distributed <span>/ self-hosted / v0.6.0</span></p>
     <h1>A lightweight, distributed <span class="redact">secret</span> manager.</h1>
     <p class="lede">Run it in your own cloud &mdash; AWS, GCP, a VPS, Kubernetes, anywhere that runs a container. It brings its own database and its own accounts, so there is no identity provider to wire up and nothing to reach out to.</p>
     <div class="pull">
@@ -294,7 +298,13 @@
 <span class="hl">Stored secret `db-pw`.</span>
 
 <span class="p">$</span> <span class="c">secretmgr share db-pw bob</span>
-<span class="hl">Granted access to `db-pw` for bob.</span></pre></div>
+<span class="hl">Granted access to `db-pw` for bob.</span>
+
+<span class="p">$</span> <span class="c">secretmgr list</span>
+<span class="o">db-pw</span>
+
+<span class="p">$</span> <span class="c">secretmgr get db-pw</span>
+<span class="hl">hunter2</span></pre></div>
       </div>
     </div>
   </section>
@@ -376,7 +386,7 @@ docker compose up -d</code>
         <span class="sec-num">03</span>
         <h2>Then get the CLI</h2>
       </div>
-      <p class="sec-note">Single self-contained executable, under 10&nbsp;MB on macOS. Nothing to install alongside it — no Python, no dependencies.</p>
+      <p class="sec-note">Once your server is up, this is how people talk to it. A self-contained executable under 10&nbsp;MB &mdash; no Python, no dependencies. Point it at your deployment with <code class="inline">BACKEND_URL</code>.</p>
 
       <div class="dl-grid" id="dlGrid">
         <a class="dl" data-os="macos" data-arch="arm64" href="https://github.com/clement880101/secret-manager/releases/latest/download/secretmgr-macos-arm64">
@@ -484,9 +494,10 @@ docker compose up -d</code>
         <ul>
           <li><strong>Set <code class="inline">SECRET_ENCRYPTION_KEY</code> and back it up.</strong> Without it values are stored unencrypted; lose it and they are unreadable, permanently.</li>
           <li><strong>Put TLS in front.</strong> The service speaks plain HTTP by design so it fits any platform. The CLI warns when it is talking cleartext to a remote host.</li>
-          <li><strong><code class="inline">list</code> returns values in plaintext</strong>, so a stolen token exposes everything that account can see at once.</li>
+          <li><strong>A stolen token still grants access</strong> to everything that account can read &mdash; one key at a time now, rather than in a single request, and every read is recorded.</li>
           <li><strong>Authentication is rate limited; the rest of the API is not.</strong> Failed logins are blocked per username and per address, but a valid token can be replayed as fast as the service answers.</li>
-          <li><strong>No audit log and no account recovery.</strong> The service does not record who read what, and a forgotten password needs an administrator to issue a token.</li>
+          <li><strong>The audit trail is per-account.</strong> You can see your own activity; there is no administrator view across all users, and events are pruned after 90 days by default.</li>
+          <li><strong>No account recovery.</strong> A forgotten password needs an administrator to issue a token.</li>
           <li><strong>Released binaries are unsigned.</strong> Verify the published SHA-256 checksums.</li>
         </ul>
       </div>
@@ -497,7 +508,7 @@ docker compose up -d</code>
 
 <footer>
   <div class="wrap foot">
-    <span>Secret Manager — v0.5.0</span>
+    <span>Secret Manager — v0.6.0</span>
     <span><a href="https://github.com/clement880101/secret-manager/blob/main/LICENSE">Apache&nbsp;2.0</a></span>
     <span><a href="https://github.com/clement880101/secret-manager">github.com/clement880101/secret-manager</a></span>
     <span><a href="https://clement880101.github.io/personal-web/">clement880101</a></span>
