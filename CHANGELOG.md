@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.7.4
+
+Both of these were found by a concurrency soak — many writers against three
+replicas sharing one database — not by the test suite, which was green.
+
+**Replicas starting together could crash.** Every replica runs `create_all()`
+on the way up, which asks which tables exist and then creates the missing ones.
+Two replicas both found a table missing, both issued `CREATE TABLE`, and the
+losers died on Postgres's own catalog index (`UniqueViolation ...
+pg_type_typname_nsp_index`). That is the documented way to deploy this —
+`--scale api=3`, `kubectl scale --replicas=10` — and it fired in roughly one
+cold start in four. Released together on one barrier, 9 of 10 crashed every
+time. Schema creation and migrations now run under a Postgres advisory lock, so
+one replica builds the schema and the rest find it already there.
+
+**Updating a secret while another replica deleted it returned 500.** The
+`UPDATE` matched no rows and SQLAlchemy raised `StaleDataError`, which nothing
+caught. Losing that race is not a server fault — the secret is gone — so it
+answers 404 now. It was 3 of 20 rounds under contention.
+
+
 ## v0.7.3
 
 **There was no way to change a secret's value.** `create` refused an existing
