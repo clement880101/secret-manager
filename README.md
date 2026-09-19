@@ -243,7 +243,6 @@ session affinity and a redeploy interrupts nothing.
 | `cli/` | The CLI, packaged with PyInstaller. |
 | `deploy/` | Compose stacks (single node and clustered) plus Kubernetes manifests. |
 | `integration-tests/` | Drives the built binary against a real backend on a real database. |
-| `terraform/` | One AWS deployment. Optional — see `DEPLOYMENT.md`. |
 
 ## Development
 
@@ -270,7 +269,7 @@ actually safe to run on more than one replica.
 
 | Workflow | Runs |
 | --- | --- |
-| `backend-ci.yml` | Tests against a real Postgres service, then builds and deploys on `main`. |
+| `backend-ci.yml` | Tests against a real Postgres service. |
 | `cli-ci.yml` | Tests, then builds Linux `x86_64`/`arm64` binaries. |
 | `integration-tests.yml` | Starts a backend and Postgres, builds the CLI, drives it end to end. No secrets needed. |
 | `release.yml` | On a `v*` tag: builds every platform binary, publishes a GitHub Release with `SHA256SUMS`, and pushes a multi-arch image to GHCR. |
