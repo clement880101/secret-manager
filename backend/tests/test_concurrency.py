@@ -129,12 +129,18 @@ def test_one_writer_wins_a_duplicate_key(pg):
 def test_concurrent_sharing_is_idempotent(pg):
     database, _, secret_service, _, secret_models = pg
     secret_service.put_secret("owner", "k", "v")
+    # The recipient has to exist: sharing no longer creates them, because a
+    # typo used to silently share with an account nobody held.
+    secret_service.put_secret("target", "own", "v")
 
     outcomes = _race(lambda i: secret_service.share_secret("owner", "k", "target"))
 
     assert outcomes == Counter(ok=CONCURRENCY), outcomes
     with database.session_scope() as db:
         assert db.query(secret_models.Share).count() == 1
-    assert len(secret_service.list_visible("target")) == 1
+    # The point is that the shared key appears once, not that the recipient
+    # owns nothing else -- they have to own something to exist at all now.
+    visible = secret_service.list_visible("target")
+    assert [item["key"] for item in visible].count("k") == 1
 
 
