@@ -27,7 +27,7 @@ if _TOKEN_FILE_ENV:
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 TOKEN_FILE_MODE = 0o600
 
 # Talking to a remote backend over plain HTTP puts the access token and every

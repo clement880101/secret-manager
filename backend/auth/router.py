@@ -140,4 +140,7 @@ def read_audit(request: Request, limit: int = 100):
     question someone asks after losing a laptop or changing a password.
     """
     user_id = service.parse_token(request.headers.get("Authorization"))
-    return {"items": audit.for_actor(user_id, limit=limit)}
+    if user_id in settings.admin_users():
+        # Administrators see everyone, which is the point of naming them.
+        return {"items": audit.recent(limit=limit), "scope": "all"}
+    return {"items": audit.for_actor(user_id, limit=limit), "scope": "self"}
