@@ -40,19 +40,49 @@ def rotate(batch_size: int = 500) -> dict:
         )
 
     examined = rewritten = 0
+    last_id = 0
+
+    # Paginate by primary key, not OFFSET. OFFSET without ORDER BY assumes a
+    # stable scan order, and there is none: rewriting a row writes a new tuple,
+    # which moves it, so later pages skip rows that earlier pages pushed past.
+    # With 1200 secrets in batches of 500 this silently left 500 of them on the
+    # old key -- and dropping the retired key then made them unreadable, in the
+    # one procedure that exists to stop exactly that.
+    #
+    # Ids never change, so ordering by id is stable under rewriting.
     while True:
         with session_scope() as db:
-            rows = db.query(Secret).offset(examined).limit(batch_size).all()
+            rows = (
+                db.query(Secret)
+                .filter(Secret.id > last_id)
+                .order_by(Secret.id)
+                .limit(batch_size)
+                .all()
+            )
             if not rows:
                 break
             for secret in rows:
+                last_id = secret.id
                 examined += 1
                 if not crypto.needs_reencryption(secret.value):
                     continue
                 # Decrypt with whichever key wrote it, store under the current one.
                 secret.value = crypto.encrypt_value(crypto.decrypt_value(secret.value))
                 rewritten += 1
-    return {"examined": examined, "rewritten": rewritten}
+
+    # Check rather than assume. Anything still on an old key here would become
+    # unreadable the moment the retired key is dropped, so the caller has to
+    # know before that happens.
+    # Streamed, not .all(). The loop above is batched precisely so a large
+    # deployment does not have to fit in memory; materialising every value here
+    # would give that back, and values run to 64KiB each.
+    remaining = 0
+    with session_scope() as db:
+        for (value,) in db.query(Secret.value).yield_per(batch_size):
+            if crypto.needs_reencryption(value):
+                remaining += 1
+
+    return {"examined": examined, "rewritten": rewritten, "remaining": remaining}
 
 
 if __name__ == "__main__":
@@ -60,6 +90,12 @@ if __name__ == "__main__":
     print(
         f"Examined {summary['examined']} secrets, re-encrypted {summary['rewritten']}."
     )
-    if summary["rewritten"] == 0:
-        print("Nothing left on an old key. Safe to drop SECRET_ENCRYPTION_KEYS_RETIRED.")
+    if summary["remaining"]:
+        print(
+            f"WARNING: {summary['remaining']} are still on an old key. Do NOT drop "
+            "SECRET_ENCRYPTION_KEYS_RETIRED yet -- run this again and, if the number "
+            "does not reach zero, report it before changing anything."
+        )
+        sys.exit(1)
+    print("Nothing left on an old key. Safe to drop SECRET_ENCRYPTION_KEYS_RETIRED.")
     sys.exit(0)
