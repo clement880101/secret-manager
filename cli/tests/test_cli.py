@@ -90,6 +90,7 @@ def test_request_with_auth_attaches_bearer_token(monkeypatch):
         captured_headers.update(kwargs.get("headers", {}))
         return DummyResponse(200, {"ok": True})
 
+    monkeypatch.setattr(cli, "API_URL", "https://api.example.com")
     monkeypatch.setattr(cli, "_ensure_token", fake_ensure_token)
     monkeypatch.setattr(cli.httpx, "request", fake_request)
 
@@ -211,23 +212,41 @@ def test_insecure_warning_is_emitted_for_remote_http(monkeypatch, capsys):
     assert "plain HTTP" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("value", ["", "   "])
-def test_empty_backend_url_falls_back_to_the_default(monkeypatch, value):
-    """A repository variable that is undefined expands to "" in CI."""
-    monkeypatch.setenv("BACKEND_URL", value)
+
+
+
+def test_backend_url_is_required(monkeypatch):
+    """The CLI used to fall back to the project's own deployment, which sent
+    other people's secrets to a server they did not choose."""
+    monkeypatch.delenv("BACKEND_URL", raising=False)
     reloaded = importlib.reload(cli)
     try:
-        assert reloaded.API_URL == reloaded.DEFAULT_BACKEND_URL
+        assert reloaded.API_URL == ""
+        runner = CliRunner()
+        result = runner.invoke(reloaded.app, ["ping"])
+        assert result.exit_code == 2
+        assert "BACKEND_URL is not set" in result.output + (result.stderr or "")
     finally:
-        monkeypatch.delenv("BACKEND_URL", raising=False)
         importlib.reload(cli)
 
 
-def test_backend_url_override_is_honoured_and_stripped(monkeypatch):
+def test_backend_url_is_honoured_and_stripped(monkeypatch):
     monkeypatch.setenv("BACKEND_URL", "https://api.example.com/")
     reloaded = importlib.reload(cli)
     try:
         assert reloaded.API_URL == "https://api.example.com"
     finally:
         monkeypatch.delenv("BACKEND_URL", raising=False)
+        importlib.reload(cli)
+
+
+def test_help_works_without_any_configuration(monkeypatch):
+    """Checked at call time, not import time, so this still has to work."""
+    monkeypatch.delenv("BACKEND_URL", raising=False)
+    reloaded = importlib.reload(cli)
+    try:
+        result = CliRunner().invoke(reloaded.app, ["--help"])
+        assert result.exit_code == 0
+        assert "register" in result.output
+    finally:
         importlib.reload(cli)

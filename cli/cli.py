@@ -16,18 +16,18 @@ if DOTENV_PATH.exists():
 
 app = typer.Typer(add_completion=False)
 
-DEFAULT_BACKEND_URL = "http://secretmgr-nlb-750c1ac03b1b7c1f.elb.us-west-1.amazonaws.com:8000"
-# An env var that is set but empty must fall back to the default rather than
-# producing a hostless URL. CI passes BACKEND_URL from a repository variable,
-# which expands to "" on a fork that has not defined one.
-API_URL = (os.environ.get("BACKEND_URL") or "").strip().rstrip("/") or DEFAULT_BACKEND_URL
+# No default on purpose. This CLI used to fall back to the project's own
+# deployment, which meant anyone who ran it without reading the docs sent their
+# credentials and secret values to a server belonging to someone else. For a
+# tool you are expected to self-host, the address has to be a decision.
+API_URL = (os.environ.get("BACKEND_URL") or "").strip().rstrip("/")
 _TOKEN_FILE_ENV = os.environ.get("SECRET_MANAGER_TOKEN_FILE")
 if _TOKEN_FILE_ENV:
     TOKEN_FILE = Path(_TOKEN_FILE_ENV).expanduser()
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 TOKEN_FILE_MODE = 0o600
 
 # Talking to a remote backend over plain HTTP puts the access token and every
@@ -44,9 +44,29 @@ def _is_cleartext_remote(url: str) -> bool:
     return (parsed.hostname or "") not in LOCAL_HOSTS
 
 
+def _backend() -> str:
+    """The configured backend, or a clear error.
+
+    Checked at call time rather than at import so that `--help` and `version`
+    still work on a machine that has not configured anything yet.
+    """
+    if not API_URL:
+        typer.echo(
+            "BACKEND_URL is not set, so there is nothing to talk to.\n\n"
+            "    export BACKEND_URL=https://secrets.example.com\n\n"
+            "If you do not have a deployment yet, start one:\n\n"
+            "    docker run -d -p 8000:8000 -v secretmgr-data:/data \\\n"
+            "      ghcr.io/clement880101/secret-manager:latest\n"
+            "    export BACKEND_URL=http://localhost:8000\n",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return API_URL
+
+
 def _warn_if_insecure() -> None:
     """Print a one-line warning when the configured backend is cleartext HTTP."""
-    if not _is_cleartext_remote(API_URL):
+    if not API_URL or not _is_cleartext_remote(API_URL):
         return
     if os.environ.get("SECRETS_ALLOW_INSECURE", "").strip().lower() in {"1", "true", "yes", "on"}:
         return
@@ -116,7 +136,7 @@ def _request_with_auth(method: str, path: str, **kwargs) -> httpx.Response:
     headers.update(_auth_headers(token_data["access_token"]))
     kwargs["headers"] = headers
 
-    url = f"{API_URL}{path}"
+    url = f"{_backend()}{path}"
     kwargs.setdefault("timeout", HTTP_TIMEOUT)
     response = httpx.request(method, url, **kwargs)
     if response.status_code == 401:
@@ -145,7 +165,7 @@ def _login_with_api_token(token: str) -> Dict[str, str]:
         raise typer.Exit(1)
     try:
         response = httpx.get(
-            f"{API_URL}/auth/whoami",
+            f"{_backend()}/auth/whoami",
             headers=_auth_headers(token),
             timeout=HTTP_TIMEOUT,
         )
@@ -169,7 +189,7 @@ def _post_credentials(path: str, username: str, password: str) -> Dict[str, str]
     """Send a username and password, store whatever token comes back."""
     try:
         response = httpx.post(
-            f"{API_URL}{path}",
+            f"{_backend()}{path}",
             json={"username": username, "password": password},
             timeout=HTTP_TIMEOUT,
         )
@@ -444,7 +464,7 @@ def ping():
     Check backend health status.
     """
     try:
-        response = httpx.get(f"{API_URL}/healthz", timeout=HTTP_TIMEOUT)
+        response = httpx.get(f"{_backend()}/healthz", timeout=HTTP_TIMEOUT)
     except httpx.RequestError as exc:
         typer.echo(f"Unable to reach API: {exc}")
         raise typer.Exit(1)
