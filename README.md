@@ -216,7 +216,7 @@ secretmgr register alice
 | `secretmgr list` | The keys you can see. Values are not included. |
 | `secretmgr get KEY` | Print one secret's value. |
 | `secretmgr audit` | Recent activity on your account. |
-| `secretmgr share KEY USER` | Grant a teammate read access. |
+| `secretmgr share KEY USER` | Grant a teammate read access. They must already have an account. |
 | `secretmgr delete KEY` | Delete a secret you own. |
 | `secretmgr ping` | Check the backend is reachable. |
 | `secretmgr version` | Print the CLI version. |

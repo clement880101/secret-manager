@@ -479,8 +479,13 @@ def share_secret(
         typer.echo(f"Granted access to `{key}` for {user_id}.")
         return
     if response.status_code == 404:
-        typer.echo(f"Secret `{key}` not found.")
-        return
+        detail = ""
+        try:
+            detail = response.json().get("detail", "")
+        except ValueError:
+            pass
+        typer.echo(detail or f"Secret `{key}` not found.")
+        raise typer.Exit(1)
     response.raise_for_status()
 
 

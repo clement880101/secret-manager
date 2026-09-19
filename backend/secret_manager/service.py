@@ -85,8 +85,17 @@ def list_visible(ext_user_id: str) -> List[dict]:
         return results
 
 
+class UnknownUser(Exception):
+    """The person a secret was being shared with does not exist here."""
+
+
 def share_secret(owner_ext_id: str, key: str, target_ext_id: str) -> None:
-    ensure_user(target_ext_id)
+    """Grant read access to an existing user.
+
+    The recipient has to exist already. Creating them on demand meant a typo
+    looked like success: the secret was shared with an account nobody held, and
+    whoever registered that name next would inherit it.
+    """
     with session_scope() as session:
         owner = session.get(User, owner_ext_id)
         if owner is None:
@@ -97,6 +106,8 @@ def share_secret(owner_ext_id: str, key: str, target_ext_id: str) -> None:
         if secret is None:
             raise ValueError("Secret not found for owner")
         target = session.get(User, target_ext_id)
+        if target is None:
+            raise UnknownUser(target_ext_id)
         duplicate = session.scalars(
             select(Share).where(Share.secret == secret, Share.user == target)
         ).first()

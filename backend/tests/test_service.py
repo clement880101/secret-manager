@@ -42,6 +42,7 @@ def test_get_secret_for_user_returns_shared_secret(service_modules):
     service = service_modules["service"]
 
     service.put_secret("owner", "shared-key", "shared-value")
+    service.put_secret("bob", "own", "bob-value")  # bob has to exist to be shared with
     service.share_secret("owner", "shared-key", "bob")
 
     secret = service.get_secret_for_user("bob", "shared-key")
@@ -72,22 +73,35 @@ def test_list_visible_includes_owned_and_shared(service_modules):
     assert {"key": "shared", "owner_id": "carol", "shared": True} in visible
 
 
-def test_share_secret_is_idempotent_and_creates_user(service_modules):
+def test_share_secret_is_idempotent(service_modules):
     service = service_modules["service"]
     database = service_modules["database"]
     Share = service_modules["Share"]
-    User = service_modules["User"]
 
     service.put_secret("owner", "key", "value")
+    service.put_secret("target", "own", "value")
     service.share_secret("owner", "key", "target")
     service.share_secret("owner", "key", "target")
 
     with database.session_scope() as session:
         shares = session.scalars(select(Share)).all()
         assert len(shares) == 1
-        share = shares[0]
-        assert share.user.user_id == "target"
-        assert session.get(User, "target") is not None
+        assert shares[0].user.user_id == "target"
+
+
+def test_sharing_with_an_unknown_user_is_refused(service_modules):
+    """A typo used to create the account silently, so the secret was shared
+    with nobody -- until someone registered that name and inherited it."""
+    service = service_modules["service"]
+    database = service_modules["database"]
+    User = service_modules["User"]
+    service.put_secret("owner", "key", "value")
+
+    with pytest.raises(service.UnknownUser):
+        service.share_secret("owner", "key", "nosuchuser")
+
+    with database.session_scope() as session:
+        assert session.get(User, "nosuchuser") is None
 
 
 def test_delete_secret_removes_secret(service_modules):
