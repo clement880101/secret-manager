@@ -79,6 +79,9 @@ Working through this is the difference between a demo and a deployment:
       your logs.
 - [ ] **`ENABLE_API_DOCS` left off**, so the schema is not published.
 - [ ] Checksums verified on any binary you distribute internally.
+- [ ] You have read the **Known limitations** in [SECURITY.md](SECURITY.md) —
+      particularly that there is no key rotation, no schema migration path, and
+      nothing here backs itself up.
 
 Read [SECURITY.md](SECURITY.md) for what this does *not* do. There are real
 limitations and they are listed plainly.
@@ -159,6 +162,7 @@ running multiple replicas, and upgrading.
 | `ALLOW_REGISTRATION` | no | Whether anyone reaching the service may sign up. Default `true`. |
 | `ENABLE_AUDIT_LOG` | no | Record who did what. Default `true`. |
 | `AUDIT_RETENTION_DAYS` | no | How long events are kept. Default `90`, `0` keeps forever. |
+| `MAX_REQUEST_BYTES` | no | Largest accepted request body. Default `262144`. |
 | `AUTH_RATE_LIMIT` | no | Failed logins allowed per username and per address. Default `10`, `0` disables. |
 | `BOOTSTRAP_TOKEN` | no | Local mode: the first token, instead of a generated one. |
 | `BACKEND_URL` | no | The public address clients reach. Only used for display and warnings. |

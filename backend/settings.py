@@ -89,3 +89,16 @@ def audit_retention_days() -> int:
         return max(0, int(os.getenv("AUDIT_RETENTION_DAYS", "90")))
     except ValueError:
         return 90
+
+
+def max_request_bytes() -> int:
+    """Largest request body accepted, in bytes.
+
+    Comfortably above the largest secret the schema allows, so a legitimate
+    request is never refused by this, while an attempt to make the process
+    buffer megabytes is.
+    """
+    try:
+        return max(1024, int(os.getenv("MAX_REQUEST_BYTES", str(256 * 1024))))
+    except ValueError:
+        return 256 * 1024
