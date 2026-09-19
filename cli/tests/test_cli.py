@@ -281,3 +281,29 @@ def test_get_requests_the_encoded_path(monkeypatch):
 
     assert result.exit_code == 0
     assert captured["path"] == "/secrets/key%3Fx%3D1"
+
+
+def test_a_client_error_reads_as_a_message_not_a_traceback(monkeypatch):
+    """Every command that forgot a status code printed a PyInstaller traceback,
+    which tells the user nothing and looks like a crash."""
+    monkeypatch.setattr(
+        cli, "_request_with_auth",
+        lambda *a, **k: DummyResponse(400, {"detail": "Secret not found for owner"}),
+    )
+
+    result = CliRunner().invoke(cli.app, ["share", "somekey", "someone"])
+
+    assert result.exit_code == 1
+    assert "Secret not found for owner" in result.output + (result.stderr or "")
+    assert "Traceback" not in result.output
+
+
+def test_a_client_error_without_a_detail_still_explains_itself(monkeypatch):
+    monkeypatch.setattr(
+        cli, "_request_with_auth", lambda *a, **k: DummyResponse(400, {})
+    )
+
+    result = CliRunner().invoke(cli.app, ["share", "somekey", "someone"])
+
+    assert result.exit_code == 1
+    assert "Could not share" in result.output + (result.stderr or "")
