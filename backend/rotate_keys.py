@@ -73,9 +73,12 @@ def rotate(batch_size: int = 500) -> dict:
     # Check rather than assume. Anything still on an old key here would become
     # unreadable the moment the retired key is dropped, so the caller has to
     # know before that happens.
+    # Streamed, not .all(). The loop above is batched precisely so a large
+    # deployment does not have to fit in memory; materialising every value here
+    # would give that back, and values run to 64KiB each.
     remaining = 0
     with session_scope() as db:
-        for (value,) in db.query(Secret.value).all():
+        for (value,) in db.query(Secret.value).yield_per(batch_size):
             if crypto.needs_reencryption(value):
                 remaining += 1
 
