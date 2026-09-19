@@ -52,12 +52,31 @@ The CLI writes its access token to `~/.token` with mode `0600`, created
 via `os.open` so it is never briefly world-readable. Tokens written by earlier
 builds were mode `0644`; the CLI repairs the mode when it next reads the file.
 
+## Limits
+
+| Limit | Default | Variable |
+| --- | --- | --- |
+| Secret value | 64 KB | — |
+| Secret key | 256 characters | — |
+| Request body | 256 KB | `MAX_REQUEST_BYTES` |
+| Failed logins | 10 per username and per address per 15 min | `AUTH_RATE_LIMIT` |
+
+The service runs as an unprivileged user (uid 10001) in the image, and the
+Kubernetes manifests require `runAsNonRoot`.
+
 ## Known limitations
 
 - **Secrets are returned in plaintext by `GET /secrets`**, so a stolen token
   exposes every value the account can see at once.
 - **Tokens do not expire.** Revoke them deliberately with `secretmgr revoke`
   when a machine is lost or someone leaves.
+- **There is no key rotation.** Changing `SECRET_ENCRYPTION_KEY` makes every
+  existing value unreadable; there is no re-encrypt step.
+- **There is no schema migration mechanism.** `create_all()` adds missing
+  tables but never alters an existing one, so an upgrade that changes a column
+  needs the database recreated.
+- **Nothing backs the database up.** That is yours to arrange.
+- **There are no metrics.** Logs only, and unstructured.
 - **There is no audit log.** The service does not record who read which secret
   and when, which some environments require.
 - **There is no account recovery.** A forgotten password needs an administrator

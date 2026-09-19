@@ -8,6 +8,7 @@ from database import init_db
 from version import VERSION
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from auth import router as auth_router
 from secret_manager import router as secrets_router
 
@@ -54,6 +55,21 @@ if _origins:
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+
+# Pydantic validates after the whole body is read, so a field limit alone still
+# lets a caller make the process buffer an arbitrarily large request. This
+# refuses it from the Content-Length header instead.
+@app.middleware("http")
+async def limit_request_size(request, call_next):
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > settings.max_request_bytes():
+                return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        except ValueError:
+            return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
+    return await call_next(request)
 
 
 @app.get("/healthz")
