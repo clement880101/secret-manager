@@ -27,7 +27,7 @@ if _TOKEN_FILE_ENV:
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
-VERSION = "0.7.2"
+VERSION = "0.7.3"
 TOKEN_FILE_MODE = 0o600
 
 # Talking to a remote backend over plain HTTP puts the access token and every
@@ -116,6 +116,25 @@ def _load_token() -> Optional[Dict[str, str]]:
     if "access_token" not in data or "user_id" not in data:
         return None
     return data
+
+
+def _fail(response: "httpx.Response", fallback: str) -> None:
+    """Report a client error and stop.
+
+    Every command that forgot a status code printed a PyInstaller traceback
+    instead, which tells the user nothing and looks like a crash. The server
+    already explains itself in `detail`; this just shows it.
+    """
+    detail = ""
+    try:
+        body = response.json()
+        detail = body.get("detail", "") if isinstance(body, dict) else ""
+    except ValueError:
+        detail = ""
+    if isinstance(detail, list):  # pydantic validation errors
+        detail = ""
+    typer.echo(detail or fallback, err=True)
+    raise typer.Exit(1)
 
 
 def _validation_message(response: "httpx.Response", key: str) -> str:
@@ -305,6 +324,8 @@ def issue_token(
     response = _request_with_auth(
         "POST", "/auth/tokens", json={"user_id": user_id, "label": label}
     )
+    if response.status_code >= 400:
+        _fail(response, f"Could not issue a token for {user_id}.")
     response.raise_for_status()
     payload = response.json()
     typer.echo(f"Token for {payload['user_id']}:\n\n    {payload['token']}\n")
@@ -344,6 +365,8 @@ def revoke(token: str = typer.Argument(..., help="The token to revoke.")):
     Revoke a token, for instance after losing a machine.
     """
     response = _request_with_auth("DELETE", "/auth/tokens", json={"token": token})
+    if response.status_code >= 400:
+        _fail(response, "Could not revoke that token.")
     response.raise_for_status()
     if response.json().get("revoked"):
         typer.echo("Token revoked.")
@@ -357,6 +380,8 @@ def whoami():
     Show who the stored token identifies.
     """
     response = _request_with_auth("GET", "/auth/whoami")
+    if response.status_code >= 400:
+        _fail(response, "Could not identify this token.")
     response.raise_for_status()
     typer.echo(response.json()["user_id"])
 
@@ -405,6 +430,8 @@ def delete_secret(key: str):
     if response.status_code == 404:
         typer.echo(f"Secret `{key}` not found.")
         return
+    if response.status_code >= 400:
+        _fail(response, f"Could not delete `{key}`.")
     response.raise_for_status()
 
 
@@ -416,6 +443,8 @@ def list_secrets():
     Reading a value is a separate, deliberate request: `secretmgr get KEY`.
     """
     response = _request_with_auth("GET", "/secrets")
+    if response.status_code >= 400:
+        _fail(response, "Could not list secrets.")
     response.raise_for_status()
     payload = response.json()
     items = payload.get("items", []) if isinstance(payload, dict) else payload or []
@@ -438,8 +467,10 @@ def get_secret(key: str):
     """
     response = _request_with_auth("GET", f"/secrets/{_quote(key)}")
     if response.status_code == 403:
-        typer.echo(f"No secret `{key}` that you can read.")
+        typer.echo(f"No secret `{key}` that you can read.", err=True)
         raise typer.Exit(1)
+    if response.status_code >= 400:
+        _fail(response, f"Could not read `{key}`.")
     response.raise_for_status()
     typer.echo(response.json()["value"])
 
@@ -450,6 +481,8 @@ def audit_log(limit: int = typer.Option(20, "--limit", help="How many events to 
     Show recent activity on your account, newest first.
     """
     response = _request_with_auth("GET", "/auth/audit", params={"limit": limit})
+    if response.status_code >= 400:
+        _fail(response, "Could not read the audit trail.")
     response.raise_for_status()
     items = response.json().get("items", [])
     if not items:
@@ -478,14 +511,8 @@ def share_secret(
     if response.status_code == 200:
         typer.echo(f"Granted access to `{key}` for {user_id}.")
         return
-    if response.status_code == 404:
-        detail = ""
-        try:
-            detail = response.json().get("detail", "")
-        except ValueError:
-            pass
-        typer.echo(detail or f"Secret `{key}` not found.")
-        raise typer.Exit(1)
+    if response.status_code >= 400:
+        _fail(response, f"Could not share `{key}`.")
     response.raise_for_status()
 
 
