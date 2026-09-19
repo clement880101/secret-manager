@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.3
+
+Client errors read as messages rather than crashes. Sharing a secret you did
+not own answered 400, which no command handled, so the CLI printed a
+PyInstaller traceback instead of "Secret not found for owner". Every command
+now shows what the server said.
+
+The security behaviour was already correct -- the share was refused, and the
+third party could not read the secret. Only the reporting was broken.
+
 ## v0.7.2
 
 Three bugs, all found by testing a published build rather than reading the
