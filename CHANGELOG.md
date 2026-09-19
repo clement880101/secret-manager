@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.0
+
+- `list` returns keys without values. A stolen token no longer hands over
+  everything an account can read in a single request; values are fetched one at
+  a time with the new `secretmgr get KEY`.
+- An audit trail records reads, writes, shares, deletions, logins and credential
+  changes. `secretmgr audit` shows your own activity. `ENABLE_AUDIT_LOG` and
+  `AUDIT_RETENTION_DAYS` control it; nothing in the trail contains a secret
+  value or a token.
+- The landing page has a sitemap, a robots.txt and a canonical URL.
+
+**Breaking:** `GET /secrets` no longer includes `value`. Use `GET /secrets/{key}`.
+
 ## v0.5.0
 
 **Breaking.** GitHub sign-in is removed. The service manages its own accounts

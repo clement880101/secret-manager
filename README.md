@@ -22,10 +22,8 @@ docker run -d -p 8000:8000 -v secretmgr-data:/data \
 secretmgr register alice     # your teammates do the same
 secretmgr create db-pw hunter2
 secretmgr share db-pw bob
+secretmgr get db-pw          # values are fetched one at a time
 ```
-
-No accounts on anyone else's platform, no outbound network access. Users sign
-themselves up.
 
 [Website](https://clement880101.github.io/secret-manager/) ·
 [Download](https://github.com/clement880101/secret-manager/releases/latest) ·
@@ -62,13 +60,6 @@ Then, depending on what you are doing:
 For the CLI: one binary, no runtime. Set `BACKEND_URL` to your own server —
 without it the CLI talks to the project's demo deployment, which is not where
 you want your secrets.
-
-## Contributing
-
-Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
-for how to get set up and what makes a change easy to accept, and
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Release notes are in
-[CHANGELOG.md](CHANGELOG.md).
 
 ## Production checklist
 
@@ -166,6 +157,8 @@ running multiple replicas, and upgrading.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `ALLOW_REGISTRATION` | no | Whether anyone reaching the service may sign up. Default `true`. |
+| `ENABLE_AUDIT_LOG` | no | Record who did what. Default `true`. |
+| `AUDIT_RETENTION_DAYS` | no | How long events are kept. Default `90`, `0` keeps forever. |
 | `AUTH_RATE_LIMIT` | no | Failed logins allowed per username and per address. Default `10`, `0` disables. |
 | `BOOTSTRAP_TOKEN` | no | Local mode: the first token, instead of a generated one. |
 | `BACKEND_URL` | no | The public address clients reach. Only used for display and warnings. |
@@ -212,7 +205,9 @@ secretmgr login
 | `secretmgr whoami` | Show who you are and how this deployment authenticates. |
 | `secretmgr logout` | Remove the stored token. |
 | `secretmgr create KEY VALUE` | Store a secret you own. |
-| `secretmgr list` | Everything visible to you: yours, plus what others shared. |
+| `secretmgr list` | The keys you can see. Values are not included. |
+| `secretmgr get KEY` | Print one secret's value. |
+| `secretmgr audit` | Recent activity on your account. |
 | `secretmgr share KEY USER` | Grant a teammate read access. |
 | `secretmgr delete KEY` | Delete a secret you own. |
 | `secretmgr ping` | Check the backend is reachable. |
@@ -272,12 +267,22 @@ actually safe to run on more than one replica.
 | `integration-tests.yml` | Starts a backend and Postgres, builds the CLI, drives it end to end. No secrets needed. |
 | `release.yml` | On a `v*` tag: builds every platform binary, publishes a GitHub Release with `SHA256SUMS`, and pushes a multi-arch image to GHCR. |
 
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+for how to get set up and what makes a change easy to accept, and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Release notes are in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## Status
 
 Early, and honest about it. Read the **Known limitations** in
-[SECURITY.md](SECURITY.md) before trusting it with anything that matters —
-notably that `GET /secrets` returns values in plaintext and there is no rate
-limiting.
+[SECURITY.md](SECURITY.md) before trusting it with anything that matters.
+
+Two things that were on that list are now fixed: `list` returns keys without
+values, so one stolen token no longer hands over everything in a single
+request, and every read, write, share and deletion is recorded — `secretmgr
+audit` shows what was done as you.
 
 ## License
 

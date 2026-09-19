@@ -13,6 +13,8 @@ down until its operator opts out.
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `SECRET_ENCRYPTION_KEY` | unset | Fernet key used to encrypt secret values before they reach the database. **Unset means values are stored in plaintext.** |
+| `ENABLE_AUDIT_LOG` | `true` | Record who read, wrote, shared and deleted what. |
+| `AUDIT_RETENTION_DAYS` | `90` | How long audit events are kept. `0` keeps them forever. |
 | `ALLOWED_ORIGINS` | empty | Comma-separated CORS origins. Empty grants nothing, which is correct for a CLI-only deployment. A `*` entry drops credentials, since browsers reject that pairing. |
 | `ENABLE_API_DOCS` | `false` | Serves `/docs`, `/redoc` and `/openapi.json`. These describe every route to anyone who asks. |
 | `BACKEND_URL` | — | The public address clients reach. |

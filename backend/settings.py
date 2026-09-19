@@ -75,3 +75,17 @@ def auth_rate_window_seconds() -> int:
         return max(1, int(os.getenv("AUTH_RATE_WINDOW_SECONDS", "900")))
     except ValueError:
         return 900
+
+
+def audit_enabled() -> bool:
+    """Whether to record who did what. On by default: a secret manager that
+    cannot answer that question is missing something its users will need."""
+    return bool_env("ENABLE_AUDIT_LOG", default=True)
+
+
+def audit_retention_days() -> int:
+    """How long to keep audit events. 0 keeps them forever."""
+    try:
+        return max(0, int(os.getenv("AUDIT_RETENTION_DAYS", "90")))
+    except ValueError:
+        return 90

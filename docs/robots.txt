@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://clement880101.github.io/secret-manager/sitemap.xml

@@ -87,7 +87,7 @@ def test_secret_lifecycle(client):
 
     listed = client.get("/secrets", headers=client.alice)
     assert listed.status_code == 200
-    assert listed.json() == {"items": [{"key": "k1", "value": "v1", "owner_id": ALICE_NAME}]}
+    assert listed.json() == {"items": [{"key": "k1", "owner_id": ALICE_NAME, "shared": False}]}
 
     assert client.delete("/secrets/k1", headers=client.bob).status_code == 404
     assert client.delete("/secrets/k1", headers=client.alice).status_code == 200
