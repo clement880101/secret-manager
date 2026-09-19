@@ -2,6 +2,7 @@ from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 
 import crypto
 from auth.models import User, ensure_user
@@ -50,6 +51,15 @@ def update_secret(owner_id: str, key: str, value: str) -> None:
         if secret is None:
             raise LookupError("Secret not found")
         secret.value = crypto.encrypt_value(value)
+        try:
+            session.flush()
+        except StaleDataError:
+            # Deleted by someone else between the lookup and the write, so the
+            # UPDATE matched no rows. That is the same outcome as never having
+            # found it, and it answers 404 rather than crashing: under a
+            # delete racing an update this was a 500 three times in twenty.
+            session.rollback()
+            raise LookupError("Secret not found") from None
 
 
 def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
