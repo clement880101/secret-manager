@@ -32,6 +32,14 @@ RUN pip install --no-cache-dir -r /tmp/requirements-prod.txt
 
 COPY . /app
 
+# Run as a normal user. A container process running as root that is exposed to
+# the network means any code execution flaw starts with root in the container,
+# and some platforms refuse to schedule root containers at all.
+# /data is the database's volume, so it has to be writable by that user.
+RUN useradd --system --uid 10001 --create-home --home-dir /home/app app \
+    && chown -R app:app /app /data
+USER app
+
 EXPOSE 8000
 
 # --proxy-headers matters once this sits behind a load balancer or ingress,

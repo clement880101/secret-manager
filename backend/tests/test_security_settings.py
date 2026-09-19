@@ -93,3 +93,55 @@ def test_wildcard_origin_never_carries_credentials(build_app):
 
 
 
+
+
+# --- resource limits -------------------------------------------------------
+
+def _token(client):
+    return client.post(
+        "/auth/register", json={"username": "alice", "password": "a good password"}
+    ).json()["token"]
+
+
+def test_an_oversized_body_is_refused_before_it_is_buffered(build_app):
+    """One authenticated account could otherwise write until the disk filled."""
+    client = build_app()
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+
+    response = client.post(
+        "/secrets", json={"key": "big", "value": "A" * (2 * 1024 * 1024)}, headers=headers
+    )
+
+    assert response.status_code == 413
+
+
+def test_an_oversized_value_is_refused(build_app):
+    client = build_app()
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+
+    response = client.post(
+        "/secrets", json={"key": "k", "value": "A" * (100 * 1024)}, headers=headers
+    )
+
+    assert response.status_code == 422
+
+
+def test_an_oversized_key_is_refused(build_app):
+    client = build_app()
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+
+    response = client.post("/secrets", json={"key": "K" * 1000, "value": "v"}, headers=headers)
+
+    assert response.status_code == 422
+
+
+def test_a_realistic_secret_still_fits(build_app):
+    """The limits must not refuse a certificate or a private key."""
+    client = build_app()
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+    private_key = "-----BEGIN PRIVATE KEY-----\n" + "M" * 3000 + "\n-----END PRIVATE KEY-----"
+
+    assert client.post(
+        "/secrets", json={"key": "tls", "value": private_key}, headers=headers
+    ).status_code == 200
+    assert client.get("/secrets/tls", headers=headers).json()["value"] == private_key
