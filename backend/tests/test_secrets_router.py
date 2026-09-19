@@ -151,3 +151,39 @@ def test_sharing_still_works_with_a_real_user(client):
         "/secrets/k/share", json={"user_id": BOB_NAME}, headers=client.alice
     ).status_code == 200
     assert client.get("/secrets/k", headers=client.bob).json()["value"] == "v"
+
+
+def test_update_replaces_the_value_and_keeps_the_share(client):
+    client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=client.alice)
+    client.post("/secrets/k1/share", json={"user_id": BOB_NAME}, headers=client.alice)
+
+    assert client.put("/secrets/k1", json={"value": "v2"}, headers=client.alice).status_code == 200
+
+    assert client.get("/secrets/k1", headers=client.alice).json()["value"] == "v2"
+    # The point of updating in place: bob still has it.
+    assert client.get("/secrets/k1", headers=client.bob).json()["value"] == "v2"
+
+
+def test_update_of_a_missing_key_is_404(client):
+    assert client.put("/secrets/ghost", json={"value": "v"}, headers=client.alice).status_code == 404
+
+
+def test_update_requires_auth(client):
+    assert client.put("/secrets/k1", json={"value": "v"}).status_code == 401
+
+
+def test_a_reader_cannot_update_what_was_shared_with_them(client):
+    client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=client.alice)
+    client.post("/secrets/k1/share", json={"user_id": BOB_NAME}, headers=client.alice)
+
+    # Bob can read it. That must not let him write it.
+    assert client.put("/secrets/k1", json={"value": "hijacked"}, headers=client.bob).status_code == 404
+    assert client.get("/secrets/k1", headers=client.alice).json()["value"] == "v1"
+
+
+def test_update_rejects_an_oversized_value(client):
+    client.post("/secrets", json={"key": "k1", "value": "v1"}, headers=client.alice)
+
+    too_big = "x" * (64 * 1024 + 1)
+    assert client.put("/secrets/k1", json={"value": too_big}, headers=client.alice).status_code == 422
+    assert client.get("/secrets/k1", headers=client.alice).json()["value"] == "v1"

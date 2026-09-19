@@ -2,6 +2,25 @@
 
 ## v0.7.3
 
+**There was no way to change a secret's value.** `create` refused an existing
+key and nothing else wrote one, so rotating a credential meant deleting the
+secret and creating it again — which removed every share attached to it and
+silently cut off the teammates it was shared with. `secretmgr update KEY VALUE`
+(PUT `/secrets/{key}`) replaces the value in place, leaving the shares alone.
+Only the owner can update; being shared a secret still means read.
+
+**Deleting a key that does not exist no longer reports success.** The CLI
+printed "not found" and exited 0, so `secretmgr delete k && ...` carried on
+after deleting nothing. Same for revoking a token that is not there.
+
+**A failed login no longer logs you out.** The stored token was deleted before
+the server was asked, so mistyping your password ended the session you already
+had.
+
+**Errors go to stderr.** Diagnostics were printed to stdout, so
+`secretmgr get k > secret.txt` could write an error message into the file
+instead of the secret.
+
 **Key rotation silently skipped secrets and made them unreadable.** Rotating
 1200 secrets in batches of 500 left 500 of them on the old key while reporting
 that it had examined all 1200. Dropping the retired key then made those 500

@@ -77,7 +77,7 @@ def test_commands_require_login_when_no_token(monkeypatch, tmp_path):
     result = runner.invoke(cli.app, ["list"])
 
     assert result.exit_code == 1
-    assert "Not logged in" in result.stdout
+    assert "Not logged in" in result.output + (result.stderr or "")
 
 
 def test_request_with_auth_attaches_bearer_token(monkeypatch):
@@ -112,7 +112,7 @@ def test_create_secret_duplicate_key(monkeypatch):
     result = runner.invoke(cli.app, ["create", "api_key", "secret"])
 
     assert result.exit_code == 1
-    assert "Secret `api_key` already exists." in result.stdout
+    assert "Secret `api_key` already exists." in result.output + (result.stderr or "")
 
 
 def test_loads_dotenv_if_present(monkeypatch, tmp_path):
@@ -307,3 +307,77 @@ def test_a_client_error_without_a_detail_still_explains_itself(monkeypatch):
 
     assert result.exit_code == 1
     assert "Could not share" in result.output + (result.stderr or "")
+
+
+def test_deleting_a_key_that_is_not_there_fails(monkeypatch):
+    """Nothing was deleted, so the command cannot report success.
+
+    It exited 0 while printing "not found", which meant
+    `secretmgr delete k && rm -rf staging` ran the second half after failing
+    to delete anything.
+    """
+    monkeypatch.setattr(
+        cli, "_request_with_auth",
+        lambda *a, **k: DummyResponse(404, {"detail": "Secret not found"}),
+    )
+
+    result = CliRunner().invoke(cli.app, ["delete", "ghost"])
+
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+
+
+def test_a_failed_login_leaves_the_existing_session_alone(monkeypatch, tmp_path):
+    """Mistyping your password should not log you out.
+
+    The stored token was deleted before the server was asked, so a refused
+    login left no session at all and the shell you were working in went dead.
+    """
+    token_file = tmp_path / "token.json"
+    monkeypatch.setattr(cli, "TOKEN_FILE", token_file)
+    monkeypatch.setattr(cli, "API_URL", "https://api.example.com")
+    cli._write_token("still-valid", "alice")
+
+    def refuse(*args, **kwargs):
+        return DummyResponse(401, {"detail": "Incorrect username or password"})
+
+    monkeypatch.setattr(cli.httpx, "post", refuse)
+
+    result = CliRunner().invoke(cli.app, ["login", "alice", "--password", "wrong-one"])
+
+    assert result.exit_code == 1
+    assert cli._load_token() == {
+        **json.loads(token_file.read_text())
+    }, "the working session was destroyed by a failed login"
+    assert cli._load_token()["access_token"] == "still-valid"
+
+
+def test_update_sends_a_put_and_reports_success(monkeypatch):
+    seen = {}
+
+    def fake_request(method, path, **kwargs):
+        seen["method"] = method
+        seen["path"] = path
+        seen["json"] = kwargs.get("json")
+        return DummyResponse(200, {"ok": True})
+
+    monkeypatch.setattr(cli, "_request_with_auth", fake_request)
+
+    result = CliRunner().invoke(cli.app, ["update", "db-pw", "hunter3"])
+
+    assert result.exit_code == 0
+    assert seen["method"] == "PUT"
+    assert seen["path"] == "/secrets/db-pw"
+    assert seen["json"] == {"value": "hunter3"}
+
+
+def test_update_of_a_missing_key_fails(monkeypatch):
+    monkeypatch.setattr(
+        cli, "_request_with_auth",
+        lambda *a, **k: DummyResponse(404, {"detail": "Secret not found"}),
+    )
+
+    result = CliRunner().invoke(cli.app, ["update", "ghost", "v"])
+
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output

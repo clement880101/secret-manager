@@ -29,6 +29,29 @@ def put_secret(owner_id: str, key: str, value: str) -> None:
             raise ValueError("Key exists for this owner") from None
 
 
+def update_secret(owner_id: str, key: str, value: str) -> None:
+    """Replace the value of an existing secret, keeping who it is shared with.
+
+    Without this the only way to change a value was to delete the secret and
+    create it again -- and deleting cascades to the shares, so rotating a
+    credential silently revoked every teammate's access to it. The row is
+    updated in place here, so the shares are untouched.
+
+    Raises:
+        LookupError: no such key owned by this user.
+    """
+    with session_scope() as session:
+        owner = session.get(User, owner_id)
+        if owner is None:
+            raise LookupError("Secret not found")
+        secret = session.scalars(
+            select(Secret).where(Secret.owner == owner, Secret.key == key)
+        ).first()
+        if secret is None:
+            raise LookupError("Secret not found")
+        secret.value = crypto.encrypt_value(value)
+
+
 def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
     """Return the secret as a plain dict so callers are not tied to the session."""
     with session_scope() as session:
