@@ -63,3 +63,58 @@ jobs:
       - name: Run tests
         working-directory: backend
         run: pytest
+
+  image:
+    name: Build container image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Pull requests build without pushing: the point is to find a broken
+      # Dockerfile before it is merged, not to publish from a branch. Until
+      # this existed the image was only ever built when cutting a release, so
+      # a Dockerfile change could sit broken on main until then.
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # main and the commit sha, never :latest -- that belongs to releases,
+          # so pulling :latest always gets a tagged version rather than a
+          # moving branch.
+          tags: |
+            ghcr.io/${{ github.repository }}:main
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check the image actually runs
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        run: |
+          docker build -t secretmgr-ci backend
+          docker run -d --name ci-check -p 8000:8000 secretmgr-ci
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/healthz >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/healthz || { docker logs ci-check; exit 1; }
+          # It must not run as root.
+          test "$(docker exec ci-check id -u)" = "10001"
+          docker rm -f ci-check
