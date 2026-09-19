@@ -18,6 +18,7 @@ import time
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
 
+import settings
 from database import session_scope
 
 from . import passwords
@@ -71,6 +72,13 @@ def resolve_token(token: str) -> Optional[str]:
         if record is None:
             return None
         if not hmac.compare_digest(record.token_hash, digest):
+            return None
+
+        ttl_days = settings.token_ttl_days()
+        if ttl_days and time.time() - record.created_at > ttl_days * 86400:
+            # Delete rather than just refuse, so an expired token stops taking
+            # up space and cannot be revived by lengthening the TTL later.
+            db.delete(record)
             return None
         return record.user_id
 

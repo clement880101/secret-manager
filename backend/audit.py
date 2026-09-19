@@ -86,3 +86,25 @@ def for_actor(actor: str, limit: int = 100) -> List[dict]:
             {"at": row.at, "action": row.action, "target": row.target, "address": row.address}
             for row in rows
         ]
+
+
+def recent(limit: int = 100) -> List[dict]:
+    """Every user's events, newest first. For administrators."""
+    limit = max(1, min(limit, 1000))
+    with session_scope() as db:
+        rows = (
+            db.query(AuditEvent)
+            .order_by(AuditEvent.at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "at": row.at,
+                "actor": row.actor,
+                "action": row.action,
+                "target": row.target,
+                "address": row.address,
+            }
+            for row in rows
+        ]
