@@ -18,8 +18,15 @@ def put_secret(owner_id: str, key: str, value: str) -> None:
         ).first()
         if existing:
             raise ValueError("Key exists for this owner")
-        secret = Secret(key=key, value=crypto.encrypt_value(value), owner=owner)
-        session.add(secret)
+        session.add(Secret(key=key, value=crypto.encrypt_value(value), owner=owner))
+        try:
+            session.flush()
+        except IntegrityError:
+            # Two callers passed the check above before either inserted. The
+            # unique constraint on (owner_id, key) is the authority, so treat
+            # losing that race as what it is: the key already exists.
+            session.rollback()
+            raise ValueError("Key exists for this owner") from None
 
 
 def get_secret_for_user(ext_user_id: str, key: str) -> Optional[dict]:
