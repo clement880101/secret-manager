@@ -93,3 +93,39 @@ def test_secret_lifecycle(client):
     assert client.delete("/secrets/k1", headers=client.alice).status_code == 200
     assert client.delete("/secrets/k1", headers=client.alice).status_code == 404
     assert client.get("/secrets", headers=client.alice).json() == {"items": []}
+
+
+# --- keys that could be stored but never reached -----------------------------
+
+def test_a_key_with_a_slash_is_refused(client):
+    """It could be created and then never read or deleted: the route treats the
+    key as one path segment, so it sat in `list` forever, unreachable."""
+    response = client.post(
+        "/secrets", json={"key": "prod/db/password", "value": "v"}, headers=client.alice
+    )
+
+    assert response.status_code == 422
+    assert client.get("/secrets", headers=client.alice).json() == {"items": []}
+
+
+def test_control_characters_in_a_key_are_refused(client):
+    assert client.post(
+        "/secrets", json={"key": "bad\nkey", "value": "v"}, headers=client.alice
+    ).status_code == 422
+
+
+def test_keys_that_survive_a_url_round_trip_are_allowed(client):
+    """Everything else works once encoded, so nothing else should be blocked."""
+    from urllib.parse import quote
+
+    # "key%20enc" is deliberately absent: TestClient and a real server disagree
+    # on how to re-encode a percent sign in a path. Verified against a real
+    # uvicorn instead, where it round-trips correctly.
+    for key in ["prod.db.password", "prod:db:password", "key with space",
+                "clé-secrète-日本", "key?x=1", "key#frag"]:
+        assert client.post(
+            "/secrets", json={"key": key, "value": f"value-of-{key}"}, headers=client.alice
+        ).status_code == 200, key
+        got = client.get(f"/secrets/{quote(key, safe='')}", headers=client.alice)
+        assert got.status_code == 200, key
+        assert got.json()["value"] == f"value-of-{key}", key
