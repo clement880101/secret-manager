@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+import audit
 import settings
 from . import local, ratelimit, service
 
@@ -58,6 +59,7 @@ def register(request: Request, payload: CredentialsRequest):
         # usernames are taken.
         ratelimit.record_failure(payload.username, _client_address(request))
         raise HTTPException(400, str(exc))
+    audit.record(audit.AUTH_REGISTER, payload.username.strip(), None, _client_address(request))
     return {"token": token, "user_id": payload.username.strip()}
 
 
@@ -74,6 +76,7 @@ def create_session(request: Request, payload: CredentialsRequest):
         raise HTTPException(401, "Incorrect username or password")
 
     ratelimit.clear(payload.username, _client_address(request))
+    audit.record(audit.AUTH_LOGIN, payload.username.strip(), None, _client_address(request))
     return {"token": token, "user_id": payload.username.strip()}
 
 
@@ -91,14 +94,18 @@ def change_password(request: Request, payload: PasswordChangeRequest):
     except local.RegistrationError as exc:
         raise HTTPException(400, str(exc))
     ratelimit.clear(user_id, _client_address(request))
+    audit.record(audit.AUTH_PASSWORD_CHANGE, user_id, None, _client_address(request))
     return {"ok": True}
 
 
 @router.delete("/tokens")
 def revoke_token(request: Request, payload: RevokeRequest):
     """Revoke a token. Used to sign out a lost machine."""
-    service.parse_token(request.headers.get("Authorization"))
-    return {"revoked": local.revoke_token(payload.token)}
+    actor = service.parse_token(request.headers.get("Authorization"))
+    revoked = local.revoke_token(payload.token)
+    if revoked:
+        audit.record(audit.TOKEN_REVOKE, actor, None, _client_address(request))
+    return {"revoked": revoked}
 
 
 @router.get("/whoami")
@@ -112,8 +119,9 @@ def whoami(request: Request):
 def create_token(request: Request, payload: TokenRequest):
     """Issue a token for a user. Requires a token already, so it chains from the
     bootstrap token the server prints on first start."""
-    service.parse_token(request.headers.get("Authorization"))
+    actor = service.parse_token(request.headers.get("Authorization"))
     token = local.issue_token(payload.user_id, label=payload.label)
+    audit.record(audit.TOKEN_ISSUE, actor, payload.user_id, _client_address(request))
     return {"token": token, "user_id": payload.user_id}
 
 
@@ -122,3 +130,14 @@ def list_tokens(request: Request):
     """List the caller's tokens. Values are never shown again once issued."""
     user_id = service.parse_token(request.headers.get("Authorization"))
     return {"items": local.list_tokens(user_id)}
+
+
+@router.get("/audit")
+def read_audit(request: Request, limit: int = 100):
+    """Your own recent activity, newest first.
+
+    Scoped to the caller: this shows what was done as you, which is the
+    question someone asks after losing a laptop or changing a password.
+    """
+    user_id = service.parse_token(request.headers.get("Authorization"))
+    return {"items": audit.for_actor(user_id, limit=limit)}

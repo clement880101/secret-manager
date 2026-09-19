@@ -68,8 +68,8 @@ def test_list_visible_includes_owned_and_shared(service_modules):
     visible = service.list_visible("alice")
 
     assert len(visible) == 2
-    assert {"key": "personal", "value": "alice-secret", "owner_id": "alice"} in visible
-    assert {"key": "shared", "value": "carol-secret", "owner_id": "carol"} in visible
+    assert {"key": "personal", "owner_id": "alice", "shared": False} in visible
+    assert {"key": "shared", "owner_id": "carol", "shared": True} in visible
 
 
 def test_share_secret_is_idempotent_and_creates_user(service_modules):
@@ -111,3 +111,17 @@ def test_delete_secret_missing_owner_raises(service_modules):
         service.delete_secret("missing", "key")
 
 
+
+
+def test_list_never_returns_values(service_modules):
+    """One stolen token should not hand over everything in a single request."""
+    service = service_modules["service"]
+    service.put_secret("alice", "k1", "hunter2")
+    service.put_secret("alice", "k2", "correct-horse")
+
+    visible = service.list_visible("alice")
+
+    assert {item["key"] for item in visible} == {"k1", "k2"}
+    assert "hunter2" not in str(visible)
+    assert "correct-horse" not in str(visible)
+    assert all("value" not in item for item in visible)
