@@ -39,13 +39,17 @@ services:
       DB_URL: postgresql+psycopg://${POSTGRES_USER:-secretmgr}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-secretmgr}
       # Without this, secret values are stored unencrypted.
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in .env}
-      OAUTH_ID_GITHUB: ${OAUTH_ID_GITHUB:?set OAUTH_ID_GITHUB in .env}
-      OAUTH_SECRET_GITHUB: ${OAUTH_SECRET_GITHUB:?set OAUTH_SECRET_GITHUB in .env}
-      # Must match the URL clients actually reach: GitHub redirects here.
-      BACKEND_URL: ${BACKEND_URL:?set BACKEND_URL in .env}
+      # This deployment has its own accounts. There is no identity provider to
+      # configure and nothing to register anywhere: the three GitHub OAuth
+      # variables that used to be required here are not read by the service at
+      # all any more, and demanding them stopped `docker compose up` before it
+      # started.
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
-      ENABLE_TEST_LOGIN: ${ENABLE_TEST_LOGIN:-false}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      ADMIN_USERS: ${ADMIN_USERS:-}
+      TOKEN_TTL_DAYS: ${TOKEN_TTL_DAYS:-0}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-0}
     ports:
       - "${API_PORT:-8000}:8000"
     healthcheck:

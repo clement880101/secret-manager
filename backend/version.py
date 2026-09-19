@@ -1,3 +1,3 @@
 """Single source of truth for the version, read by the API and the CLI."""
 
-VERSION = "0.7.4"
+VERSION = "0.7.5"
