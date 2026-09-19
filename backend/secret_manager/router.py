@@ -55,6 +55,10 @@ def share_secret(request: Request, key: str, payload: ShareIn):
     user_id = current_user_id(request)
     try:
         service.share_secret(user_id, key, payload.user_id)
+    except service.UnknownUser:
+        # Distinct from "secret not found", so a typo in the recipient reads
+        # differently from a typo in the key.
+        raise HTTPException(404, f"No user named {payload.user_id!r} on this deployment")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     audit.record(audit.SECRET_SHARE, user_id, f"{key} -> {payload.user_id}", client_address(request))

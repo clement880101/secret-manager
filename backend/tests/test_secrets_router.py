@@ -129,3 +129,25 @@ def test_keys_that_survive_a_url_round_trip_are_allowed(client):
         got = client.get(f"/secrets/{quote(key, safe='')}", headers=client.alice)
         assert got.status_code == 200, key
         assert got.json()["value"] == f"value-of-{key}", key
+
+
+def test_sharing_with_an_unknown_user_returns_404(client):
+    """It used to answer 200 and create the account, so a typo looked like it
+    had worked and the secret was shared with a name nobody held."""
+    client.post("/secrets", json={"key": "k", "value": "v"}, headers=client.alice)
+
+    response = client.post(
+        "/secrets/k/share", json={"user_id": "nosuchuser"}, headers=client.alice
+    )
+
+    assert response.status_code == 404
+    assert "nosuchuser" in response.json()["detail"]
+
+
+def test_sharing_still_works_with_a_real_user(client):
+    client.post("/secrets", json={"key": "k", "value": "v"}, headers=client.alice)
+    # bob exists because the fixture issued him a token.
+    assert client.post(
+        "/secrets/k/share", json={"user_id": BOB_NAME}, headers=client.alice
+    ).status_code == 200
+    assert client.get("/secrets/k", headers=client.bob).json()["value"] == "v"
