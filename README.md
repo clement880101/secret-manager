@@ -269,7 +269,7 @@ actually safe to run on more than one replica.
 
 | Workflow | Runs |
 | --- | --- |
-| `backend-ci.yml` | Tests against a real Postgres service. |
+| `backend-ci.yml` | Tests against a real Postgres service, then builds the container image — pushed to GHCR as `main` and `sha-…` on `main`, build-and-smoke-tested only on pull requests. |
 | `cli-ci.yml` | Tests, then builds Linux `x86_64`/`arm64` binaries. |
 | `integration-tests.yml` | Starts a backend and Postgres, builds the CLI, drives it end to end. No secrets needed. |
 | `release.yml` | On a `v*` tag: builds every platform binary, publishes a GitHub Release with `SHA256SUMS`, and pushes a multi-arch image to GHCR. |
