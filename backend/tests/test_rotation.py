@@ -75,7 +75,7 @@ def test_rotation_rewrites_everything_onto_the_current_key(monkeypatch, db_path)
 
     summary = rotate_keys.rotate()
 
-    assert summary == {"examined": 2, "rewritten": 2}
+    assert summary == {"examined": 2, "rewritten": 2, "remaining": 0}
     assert service.get_secret_for_user("alice", "one")["value"] == "first"
 
     # Step two: the retired key can now be dropped entirely.
@@ -115,3 +115,43 @@ def test_migrations_run_and_are_recorded(monkeypatch, db_path):
     assert migrations.table_exists("schema_migrations")
     # Running again applies nothing, which is what makes restarts safe.
     assert migrations.run_migrations() == []
+
+
+def test_rotation_across_many_batches_misses_nothing(monkeypatch, db_path):
+    """The bug this guards against lost 500 of 1200 secrets.
+
+    Paging with OFFSET assumes a stable scan order. Rewriting a row writes a
+    new tuple, which moves it, so later pages skipped rows earlier pages had
+    pushed past. A single-secret test passes happily; only a multi-batch one
+    finds it.
+    """
+    _, service, _ = _load(monkeypatch, db_path, OLD_KEY)
+    total = 250
+    for i in range(total):
+        service.put_secret("alice", f"key-{i:04d}", f"value-{i:04d}")
+
+    _load(monkeypatch, db_path, NEW_KEY, retired=OLD_KEY)
+    rotate_keys = importlib.import_module("rotate_keys")
+
+    # A batch size well below the row count, so it has to paginate.
+    summary = rotate_keys.rotate(batch_size=40)
+
+    assert summary["examined"] == total
+    assert summary["rewritten"] == total
+    assert summary["remaining"] == 0
+
+    # The real test: readable with the retired key gone.
+    _, service, _ = _load(monkeypatch, db_path, NEW_KEY)
+    for i in range(total):
+        assert service.get_secret_for_user("alice", f"key-{i:04d}")["value"] == f"value-{i:04d}"
+
+
+def test_rotation_reports_anything_it_could_not_move(monkeypatch, db_path):
+    """The caller has to know before dropping the retired key."""
+    _, service, _ = _load(monkeypatch, db_path, OLD_KEY)
+    service.put_secret("alice", "k", "v")
+
+    _load(monkeypatch, db_path, NEW_KEY, retired=OLD_KEY)
+    rotate_keys = importlib.import_module("rotate_keys")
+
+    assert rotate_keys.rotate()["remaining"] == 0
