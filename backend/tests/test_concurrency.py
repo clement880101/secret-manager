@@ -144,3 +144,73 @@ def test_concurrent_sharing_is_idempotent(pg):
     assert [item["key"] for item in visible].count("k") == 1
 
 
+
+
+@requires_postgres
+def test_replicas_starting_together_do_not_crash(monkeypatch):
+    """Every replica runs init_db() on the way up, at the same moment.
+
+    create_all() is check-then-act: it asks which tables exist, then creates
+    the ones that do not. Two replicas both find a table missing, both issue
+    CREATE TABLE, and the losers die on Postgres's own catalog index --
+
+        UniqueViolation: duplicate key ... constraint "pg_type_typname_nsp_index"
+
+    -- which crashes the documented way to deploy this: `--scale api=3`,
+    `kubectl scale --replicas=10`. Against a real cold start it fired in
+    roughly one attempt in four, which is the worst frequency to have: rare
+    enough to look like a fluke, common enough to hit a production rollout.
+
+    Released together on one barrier, 9 of 10 threads failed every round.
+    """
+    database, *_ = _load(monkeypatch, POSTGRES_URL)
+
+    # A genuinely fresh database, which is when the race exists at all.
+    with database.engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+    database.Base.metadata.clear()
+    for name in list(sys.modules):
+        if name in ("audit_models", "migrations") or name.startswith(
+            ("auth.", "secret_manager.")
+        ):
+            del sys.modules[name]
+
+    outcomes = _race(lambda _: database.init_db(), n=10)
+
+    assert outcomes == Counter({"ok": 10}), (
+        f"replicas failed to start concurrently: {outcomes}"
+    )
+
+
+@requires_postgres
+def test_update_racing_a_delete_is_not_a_crash(monkeypatch):
+    """One replica updating while another deletes the same key.
+
+    update_secret looked the row up and then wrote it. When a delete landed in
+    between, the UPDATE matched no rows and SQLAlchemy raised StaleDataError,
+    which nothing caught -- a 500. Losing that race is not a server fault: the
+    secret is gone, which is a 404.
+
+    Found by a soak across three replicas, where it was 3 of 20 rounds.
+    """
+    _, _, secret_service, _, _ = _load(monkeypatch, POSTGRES_URL)
+
+    crashes = Counter()
+    for round_number in range(20):
+        key = f"race{round_number}"
+        secret_service.put_secret("alice", key, "v")
+
+        def contend(i):
+            if i % 2:
+                secret_service.delete_secret("alice", key)
+            else:
+                secret_service.update_secret("alice", key, "x")
+
+        crashes.update(_race(contend, n=6))
+
+    unexpected = {
+        name: count
+        for name, count in crashes.items()
+        if name not in ("ok", "LookupError")
+    }
+    assert not unexpected, f"delete racing update raised something unhandled: {unexpected}"
