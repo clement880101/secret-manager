@@ -27,7 +27,7 @@ if _TOKEN_FILE_ENV:
 else:
     TOKEN_FILE = Path.home() / ".token"
 HTTP_TIMEOUT = float(os.environ.get("SECRETS_HTTP_TIMEOUT", "10.0"))
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 TOKEN_FILE_MODE = 0o600
 
 # Talking to a remote backend over plain HTTP puts the access token and every
@@ -116,6 +116,34 @@ def _load_token() -> Optional[Dict[str, str]]:
     if "access_token" not in data or "user_id" not in data:
         return None
     return data
+
+
+def _validation_message(response: "httpx.Response", key: str) -> str:
+    """Turn a 422 body into something worth reading."""
+    try:
+        detail = response.json().get("detail", [])
+    except ValueError:
+        detail = []
+    for item in detail if isinstance(detail, list) else []:
+        field = (item.get("loc") or ["?"])[-1]
+        if field == "key":
+            return (
+                f"`{key}` is not a usable key. Keys cannot contain a slash or "
+                "control characters, and must be 1-256 characters."
+            )
+        if field == "value":
+            return "That value is too large. The limit is 64KB."
+    return "The server rejected that request."
+
+
+def _quote(key: str) -> str:
+    """Percent-encode a secret key for use in a URL path.
+
+    Without this a key containing ? or # ended the path early, so the secret
+    could be created and then never read or deleted -- it stayed in `list`
+    forever, unreachable.
+    """
+    return urllib.parse.quote(key, safe="")
 
 
 def _auth_headers(token: str) -> Dict[str, str]:
@@ -358,6 +386,10 @@ def create_secret(key: str, value: str):
     if response.status_code == 409:
         typer.echo(f"Secret `{key}` already exists.")
         raise typer.Exit(1)
+    if response.status_code == 422:
+        # A rejected key or value should read as an error, not a stack trace.
+        typer.echo(_validation_message(response, key))
+        raise typer.Exit(1)
     response.raise_for_status()
 
 
@@ -366,7 +398,7 @@ def delete_secret(key: str):
     """
     Delete a secret key/value pair you have access to.
     """
-    response = _request_with_auth("DELETE", f"/secrets/{key}")
+    response = _request_with_auth("DELETE", f"/secrets/{_quote(key)}")
     if response.status_code == 200:
         typer.echo(f"Deleted secret `{key}`.")
         return
@@ -404,7 +436,7 @@ def get_secret(key: str):
     """
     Print the value of one secret.
     """
-    response = _request_with_auth("GET", f"/secrets/{key}")
+    response = _request_with_auth("GET", f"/secrets/{_quote(key)}")
     if response.status_code == 403:
         typer.echo(f"No secret `{key}` that you can read.")
         raise typer.Exit(1)
@@ -440,7 +472,7 @@ def share_secret(
     """
     response = _request_with_auth(
         "POST",
-        f"/secrets/{key}/share",
+        f"/secrets/{_quote(key)}/share",
         json={"user_id": user_id},
     )
     if response.status_code == 200:
