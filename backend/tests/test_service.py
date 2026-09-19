@@ -139,3 +139,40 @@ def test_list_never_returns_values(service_modules):
     assert "hunter2" not in str(visible)
     assert "correct-horse" not in str(visible)
     assert all("value" not in item for item in visible)
+
+
+def test_list_does_not_even_read_the_values(service_modules):
+    """Withholding the values is not the same as not fetching them.
+
+    list_visible returned the right three fields while selecting whole Secret
+    rows, so every list call read the ciphertext of everything the caller could
+    reach out of the database and then dropped it. The previous test passes
+    against that version, because it only inspects the response.
+    """
+    from sqlalchemy import event
+
+    service = service_modules["service"]
+    database = service_modules["database"]
+    service.put_secret("alice", "k1", "hunter2")
+    service.put_secret("bob", "own", "bobs-own")  # also creates bob
+    service.share_secret("alice", "k1", "bob")
+
+    statements = []
+
+    def record(conn, cursor, statement, params, context, executemany):
+        statements.append(statement)
+
+    event.listen(database.engine, "before_cursor_execute", record)
+    try:
+        visible = service.list_visible("bob")
+    finally:
+        event.remove(database.engine, "before_cursor_execute", record)
+
+    assert {item["key"] for item in visible} == {"own", "k1"}
+
+    selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+    assert selects, "expected the listing to query something"
+    assert not [s for s in selects if "secrets.value" in s], (
+        "listing read the secret values it exists to withhold:\n"
+        + "\n".join(s for s in selects if "secrets.value" in s)
+    )

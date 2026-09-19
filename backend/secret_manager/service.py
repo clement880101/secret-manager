@@ -65,21 +65,27 @@ def list_visible(ext_user_id: str) -> List[dict]:
         me = session.get(User, ext_user_id)
         if me is None:
             return []
-        owned = session.scalars(select(Secret).where(Secret.owner == me)).all()
-        shared = session.scalars(
-            select(Secret).join(Secret.shares).where(Share.user == me)
+        # Select the three columns that go into the response, not whole rows.
+        # Selecting whole Secrets pulled the ciphertext of everything this user
+        # can reach into memory on every list call -- values this endpoint
+        # exists precisely to withhold. They were dropped again immediately,
+        # having cost a read of the entire column.
+        columns = select(Secret.id, Secret.key, Secret.owner_id)
+        owned = session.execute(columns.where(Secret.owner_id == ext_user_id)).all()
+        shared = session.execute(
+            columns.join(Secret.shares).where(Share.user_id == ext_user_id)
         ).all()
         results = []
         seen = set()
-        for secret in owned + shared:
-            if secret.id in seen:
+        for secret_id, key, owner_id in owned + shared:
+            if secret_id in seen:
                 continue
-            seen.add(secret.id)
+            seen.add(secret_id)
             results.append(
                 {
-                    "key": secret.key,
-                    "owner_id": secret.owner.user_id,
-                    "shared": secret.owner_id != ext_user_id,
+                    "key": key,
+                    "owner_id": owner_id,
+                    "shared": owner_id != ext_user_id,
                 }
             )
         return results
