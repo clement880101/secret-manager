@@ -250,3 +250,34 @@ def test_help_works_without_any_configuration(monkeypatch):
         assert "register" in result.output
     finally:
         importlib.reload(cli)
+
+
+@pytest.mark.parametrize(
+    "key,expected",
+    [
+        ("plain", "plain"),
+        ("key?x=1", "key%3Fx%3D1"),
+        ("key#frag", "key%23frag"),
+        ("key with space", "key%20with%20space"),
+        ("key%20enc", "key%2520enc"),
+    ],
+)
+def test_keys_are_percent_encoded_in_urls(key, expected):
+    """An unencoded ? or # ended the path early, so the secret could be created
+    and then never read or deleted."""
+    assert cli._quote(key) == expected
+
+
+def test_get_requests_the_encoded_path(monkeypatch):
+    captured = {}
+
+    def fake_request(method, path, **kwargs):
+        captured["path"] = path
+        return DummyResponse(200, {"key": "k", "value": "v", "owner_id": "alice"})
+
+    monkeypatch.setattr(cli, "_request_with_auth", fake_request)
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["get", "key?x=1"])
+
+    assert result.exit_code == 0
+    assert captured["path"] == "/secrets/key%3Fx%3D1"
