@@ -76,6 +76,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Needed to build arm64 on an amd64 runner. Only on main, because the
+      # emulation is slow and a pull request only needs to know the image
+      # builds and runs at all.
+      - name: Set up QEMU
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -96,6 +103,10 @@ jobs:
         with:
           context: backend
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Both architectures when publishing, or the tag cannot be pulled on
+          # Apple silicon, Graviton or a Pi. A pull request builds only the
+          # runner's own architecture, which is all a smoke test needs.
+          platforms: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           # main and the commit sha, never :latest -- that belongs to releases,
           # so pulling :latest always gets a tagged version rather than a
           # moving branch.
