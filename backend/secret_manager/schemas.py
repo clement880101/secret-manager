@@ -27,3 +27,9 @@ class SecretIn(BaseModel):
 
 class ShareIn(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=MAX_USER_ID_LENGTH)
+
+
+class SecretValueIn(BaseModel):
+    """An update: the key comes from the path, so only the value is sent."""
+
+    value: str = Field(..., min_length=1, max_length=MAX_VALUE_LENGTH)

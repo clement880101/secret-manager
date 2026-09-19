@@ -27,6 +27,7 @@ LOGGER = logging.getLogger(__name__)
 SECRET_READ = "secret.read"
 SECRET_LIST = "secret.list"
 SECRET_CREATE = "secret.create"
+SECRET_UPDATE = "secret.update"
 SECRET_SHARE = "secret.share"
 SECRET_DELETE = "secret.delete"
 AUTH_REGISTER = "auth.register"
