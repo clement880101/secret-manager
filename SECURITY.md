@@ -25,8 +25,8 @@ Generate an encryption key with:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Store it in the Secrets Manager entry Terraform creates (`encryption_key_secret_arn`).
-Values written before a key is configured stay readable — ciphertext carries an
+Pass it as `SECRET_ENCRYPTION_KEY`, from whatever your platform uses for
+secrets. Values written before a key is configured stay readable — ciphertext carries an
 `enc:v1:` prefix, and rows without it are treated as legacy plaintext. **Rotating
 or losing the key makes existing encrypted values unreadable**; there is no
 recovery path.
@@ -56,20 +56,15 @@ returning nonsense, and says which variable to set.
 
 ## Transport
 
-`terraform apply` puts a CloudFront distribution in front of the load balancer
-(`enable_https`, on by default), giving clients HTTPS on CloudFront's own
-certificate with no domain required. Use the `api_base_url` output as the CLI's
-`BACKEND_URL`.
-
-The CloudFront-to-origin hop remains HTTP. It travels the AWS backbone rather
-than the public internet, but it is not encrypted. Closing that gap requires a
-certificate the origin can present, which requires a domain you control — set
-`domain_name` and `acm_certificate_arn` (issued in `us-east-1`).
+The service speaks plain HTTP by design, so it fits behind whatever your
+platform already terminates TLS with: an ingress, a load balancer, a reverse
+proxy, or a PaaS that does it for you. See `DEPLOYMENT.md`.
 
 The CLI has **no default `BACKEND_URL`** and refuses to run without one, so it
 cannot send credentials to a server the user did not choose. It also warns when
 `BACKEND_URL` is cleartext HTTP to a non-loopback host; silence that with
 `SECRETS_ALLOW_INSECURE=1` if you accept the risk.
+
 
 ## Client credential storage
 
