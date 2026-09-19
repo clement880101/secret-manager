@@ -2,7 +2,15 @@
 
 ## v0.7.2
 
-Two bugs that let you store a secret you could never read back.
+Three bugs, all found by testing a published build rather than reading the
+code.
+
+**Sharing with a name that does not exist used to succeed.** It created the
+account on the spot, so a typo looked like it had worked: the secret was shared
+with a name nobody held, and whoever registered that name next would inherit
+it. The recipient has to exist now, and a typo says so.
+
+Two more that let you store a secret you could never read back.
 
 - **A key containing `/` was accepted and then unreachable.** The route treats
   the key as one path segment, so the secret was created, appeared in `list`,
