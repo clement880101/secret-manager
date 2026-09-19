@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.2
+
+Two bugs that let you store a secret you could never read back.
+
+- **A key containing `/` was accepted and then unreachable.** The route treats
+  the key as one path segment, so the secret was created, appeared in `list`,
+  and could not be read or deleted — it stayed there permanently. Such keys are
+  now refused with a message saying why.
+- **The CLI did not percent-encode the key in the URL**, so a key containing
+  `?`, `#` or `%` had the same outcome through the CLI even though the server
+  handled it correctly when encoded.
+
+Both were found by testing unusual keys against a published build rather than
+by reading the code. Every key that can survive a URL round trip still works,
+including spaces, unicode, dots, colons, `?`, `#` and `%`.
+
+A rejected key or an oversized value now prints an explanation instead of a
+Python traceback.
+
 ## v0.7.1
 
 Removed the AWS deployment entirely. `terraform/`, the ECS deploy job, and the

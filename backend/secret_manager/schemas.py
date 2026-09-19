@@ -17,7 +17,11 @@ MAX_USER_ID_LENGTH = 64
 
 
 class SecretIn(BaseModel):
-    key: str = Field(..., min_length=1, max_length=MAX_KEY_LENGTH)
+    # No slashes: the key is a single path segment in /secrets/{key}, so a key
+    # containing "/" could be created and then never read or deleted. It sat in
+    # `list` forever, unreachable. Percent-encoding does not help -- the server
+    # decodes before routing, so %2F splits the path just the same.
+    key: str = Field(..., min_length=1, max_length=MAX_KEY_LENGTH, pattern=r"^[^/\x00-\x1f]+$")
     value: str = Field(..., min_length=1, max_length=MAX_VALUE_LENGTH)
 
 
