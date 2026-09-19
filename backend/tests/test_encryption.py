@@ -68,6 +68,7 @@ def test_shared_secret_decrypts_for_the_recipient(monkeypatch, tmp_path):
     _, service, _ = _load(monkeypatch, tmp_path, KEY)
 
     service.put_secret("alice", "k", "hunter2")
+    service.put_secret("bob", "own", "bob-secret")  # bob has to exist to be shared with
     service.share_secret("alice", "k", "bob")
 
     assert service.get_secret_for_user("bob", "k")["value"] == "hunter2"
