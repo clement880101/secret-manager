@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.5
+
+**The documented way to self-host did not start.** `deploy/docker-compose.yml`
+still demanded `OAUTH_ID_GITHUB`, `OAUTH_SECRET_GITHUB` and `BACKEND_URL` —
+none of which the service reads any more, GitHub sign-in having been removed —
+so `cd deploy && docker compose up -d` stopped with
+`required variable BACKEND_URL is missing a value` before starting anything.
+Those are gone, and the variables that are actually read are there instead.
+
+**`deploy/.env.example` still described GitHub sign-in**, asking for an OAuth
+app and a callback URL for an integration the service no longer has, while
+omitting `BOOTSTRAP_TOKEN` — which the clustered deployment refuses to start
+without. It now documents every setting that is actually read, with the
+commands to generate an encryption key and a bootstrap token.
+
+`.env` is now in `.gitignore`. A filled-in one holds the key your secrets are
+encrypted with and must never be committed.
+
+
 ## v0.7.4
 
 Both of these were found by a concurrency soak — many writers against three

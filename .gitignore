@@ -1,2 +1,6 @@
 .DS_Store
 cli/.token
+
+# Filled-in environment files. .env.example is the template that is tracked;
+# a real .env holds an encryption key and a database password and must not be.
+.env
