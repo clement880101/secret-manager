@@ -13,6 +13,14 @@ new tuple, which moves it, so later pages skipped rows earlier pages had pushed
 past. It now pages by primary key, which does not move, and counts what is left
 afterwards rather than assuming. It exits non-zero if anything remains.
 
+**Listing secrets no longer reads their values.** `list_visible` returns only
+keys by design, so that one stolen token cannot pull every secret an account
+can reach in a single request. It was getting those keys by selecting whole
+rows, so each list call still read the ciphertext of everything the caller
+could reach and then discarded it. Nothing was decrypted or returned, but a
+list cost a full read of the value column. It selects only the columns it
+returns now.
+
 
 Client errors read as messages rather than crashes. Sharing a secret you did
 not own answered 400, which no command handled, so the CLI printed a
