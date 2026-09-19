@@ -66,8 +66,10 @@ than the public internet, but it is not encrypted. Closing that gap requires a
 certificate the origin can present, which requires a domain you control — set
 `domain_name` and `acm_certificate_arn` (issued in `us-east-1`).
 
-The CLI prints a warning when `BACKEND_URL` is cleartext HTTP to a non-loopback
-host. Silence it with `SECRETS_ALLOW_INSECURE=1` if you accept the risk.
+The CLI has **no default `BACKEND_URL`** and refuses to run without one, so it
+cannot send credentials to a server the user did not choose. It also warns when
+`BACKEND_URL` is cleartext HTTP to a non-loopback host; silence that with
+`SECRETS_ALLOW_INSECURE=1` if you accept the risk.
 
 ## Client credential storage
 

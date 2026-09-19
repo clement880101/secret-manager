@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.1
+
+**Breaking, and deliberately so.** `BACKEND_URL` is now required.
+
+The CLI shipped with a default pointing at the project's own AWS deployment,
+over plain HTTP. Anyone who downloaded the binary and ran it without reading
+the docs sent their access token and secret values to a server belonging to
+someone else. For a tool you are expected to self-host, the address has to be a
+decision rather than a fallback.
+
+Running any command without it now explains what to set and how to start a
+deployment, and exits 2. `--help` and `version` still work without it.
+
 ## v0.7.0
 
 Closes the gaps that stood between this and a production deployment.
