@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.7.0
+
+Closes the gaps that stood between this and a production deployment.
+
+- **Key rotation.** `SECRET_ENCRYPTION_KEYS_RETIRED` holds previous keys for
+  decryption while the current one encrypts, and `rotate_keys.py` re-encrypts
+  what is left. A rotation now takes two deploys with no window where anything
+  is unreadable. Swapping the key in one step still fails loudly, and says
+  which variable to set.
+- **Schema migrations.** An ordered, recorded set of steps runs on startup, so
+  a change that `create_all()` cannot make no longer means recreating the
+  database.
+- **Optional token expiry** via `TOKEN_TTL_DAYS`. Off by default; expired
+  tokens are deleted rather than merely refused.
+- **Administrator audit view.** Users named in `ADMIN_USERS` see everyone's
+  trail rather than only their own.
+- **`/metrics`**, in Prometheus text format with no new dependency. Off unless
+  `ENABLE_METRICS` is set, since the counts are not for every deployment.
+- Backup procedure documented for both Postgres and SQLite, including the point
+  that a database backup without the encryption key is unreadable.
+
 ## v0.6.0
 
 - `list` returns keys without values. A stolen token no longer hands over

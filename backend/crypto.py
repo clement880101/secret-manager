@@ -15,7 +15,7 @@ import logging
 import os
 from typing import Optional
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 
 LOGGER = logging.getLogger(__name__)
@@ -32,17 +32,35 @@ def _key() -> Optional[bytes]:
     return raw.encode("utf-8") if raw else None
 
 
+def _retired_keys() -> list:
+    """Keys that can still decrypt, but are no longer used to encrypt.
+
+    Rotation is otherwise all-or-nothing: swapping SECRET_ENCRYPTION_KEY makes
+    every existing value unreadable, because nothing can decrypt what the old
+    key wrote. Listing the previous key here lets the new one take over while
+    old ciphertext stays readable, so a rotation can be done without downtime
+    and without re-encrypting everything first.
+    """
+    raw = os.getenv("SECRET_ENCRYPTION_KEYS_RETIRED", "")
+    return [k.strip().encode("utf-8") for k in raw.split(",") if k.strip()]
+
+
 def encryption_enabled() -> bool:
     """Whether a usable encryption key is configured."""
     return _key() is not None
 
 
-def _cipher() -> Optional[Fernet]:
+def _cipher() -> Optional[MultiFernet]:
+    """The cipher stack: the current key first, then any retired ones.
+
+    MultiFernet encrypts with the first key and decrypts with whichever one
+    works, which is exactly the shape a rotation needs.
+    """
     key = _key()
     if key is None:
         return None
     try:
-        return Fernet(key)
+        return MultiFernet([Fernet(k) for k in [key] + _retired_keys()])
     except (ValueError, TypeError) as exc:
         # A malformed key is a deployment error, not something to paper over:
         # encrypting with a broken key would silently lose data.
@@ -94,6 +112,22 @@ def decrypt_value(stored: str) -> str:
         return cipher.decrypt(token).decode("utf-8")
     except InvalidToken as exc:
         raise RuntimeError(
-            "Stored secret could not be decrypted with the configured "
-            "SECRET_ENCRYPTION_KEY. The key may have been rotated or replaced."
+            "Stored secret could not be decrypted with any configured key. "
+            "If SECRET_ENCRYPTION_KEY was changed, add the previous key to "
+            "SECRET_ENCRYPTION_KEYS_RETIRED so existing values stay readable."
         ) from exc
+
+
+def needs_reencryption(stored: str) -> bool:
+    """Whether a stored value was written with something other than the current key."""
+    if not stored.startswith(CIPHERTEXT_PREFIX):
+        return True  # legacy plaintext
+    key = _key()
+    if key is None:
+        return False
+    try:
+        # Decrypting with the current key alone succeeds only if it wrote this.
+        Fernet(key).decrypt(stored[len(CIPHERTEXT_PREFIX):].encode("ascii"))
+        return False
+    except (InvalidToken, ValueError, TypeError):
+        return True

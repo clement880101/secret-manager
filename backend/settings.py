@@ -102,3 +102,31 @@ def max_request_bytes() -> int:
         return max(1024, int(os.getenv("MAX_REQUEST_BYTES", str(256 * 1024))))
     except ValueError:
         return 256 * 1024
+
+
+def token_ttl_days() -> int:
+    """How long a token stays valid. 0 means it never expires.
+
+    Off by default because a CLI that silently stops working is worse than one
+    whose tokens you revoke deliberately, but deployments that want automatic
+    expiry can have it.
+    """
+    try:
+        return max(0, int(os.getenv("TOKEN_TTL_DAYS", "0")))
+    except ValueError:
+        return 0
+
+
+def admin_users() -> List[str]:
+    """Users allowed to read everyone's audit trail, not just their own."""
+    raw = os.getenv("ADMIN_USERS", "")
+    return [name.strip() for name in raw.split(",") if name.strip()]
+
+
+def metrics_enabled() -> bool:
+    """Whether to serve /metrics.
+
+    Off by default: the counts it exposes (how many users, how many secrets)
+    are not something every deployment wants on an unauthenticated endpoint.
+    """
+    return bool_env("ENABLE_METRICS", default=False)

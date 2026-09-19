@@ -31,6 +31,29 @@ Values written before a key is configured stay readable — ciphertext carries a
 or losing the key makes existing encrypted values unreadable**; there is no
 recovery path.
 
+## Rotating the encryption key
+
+Two steps, so nothing is ever unreadable in between:
+
+1. Generate a new key. Set `SECRET_ENCRYPTION_KEY` to it and move the previous
+   one to `SECRET_ENCRYPTION_KEYS_RETIRED`. Deploy. New writes use the new key;
+   existing values still decrypt with the retired one.
+2. Re-encrypt what is left, then drop the retired key and deploy again:
+
+```bash
+docker run --rm -e DB_URL=... -e SECRET_ENCRYPTION_KEY=<new> \
+  -e SECRET_ENCRYPTION_KEYS_RETIRED=<old> \
+  ghcr.io/clement880101/secret-manager:latest python rotate_keys.py
+```
+
+It reports how many it rewrote. When that reaches zero, nothing is left on the
+old key. `SECRET_ENCRYPTION_KEYS_RETIRED` takes a comma-separated list, so more
+than one generation can be in flight.
+
+**Swapping the key in one step, without retiring the old one, makes every
+existing value permanently unreadable.** The service refuses loudly rather than
+returning nonsense, and says which variable to set.
+
 ## Transport
 
 `terraform apply` puts a CloudFront distribution in front of the load balancer
@@ -70,13 +93,10 @@ Kubernetes manifests require `runAsNonRoot`.
   exposes every value the account can see at once.
 - **Tokens do not expire.** Revoke them deliberately with `secretmgr revoke`
   when a machine is lost or someone leaves.
-- **There is no key rotation.** Changing `SECRET_ENCRYPTION_KEY` makes every
-  existing value unreadable; there is no re-encrypt step.
-- **There is no schema migration mechanism.** `create_all()` adds missing
-  tables but never alters an existing one, so an upgrade that changes a column
-  needs the database recreated.
-- **Nothing backs the database up.** That is yours to arrange.
-- **There are no metrics.** Logs only, and unstructured.
+- **Nothing backs the database up.** That is yours to arrange — see
+  `DEPLOYMENT.md`.
+- **Logs are unstructured.** `/metrics` exposes counts, but there is no
+  request tracing.
 - **There is no audit log.** The service does not record who read which secret
   and when, which some environments require.
 - **There is no account recovery.** A forgotten password needs an administrator

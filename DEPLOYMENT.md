@@ -204,6 +204,26 @@ The concurrency behaviour is covered by tests that run against a real Postgres.
 They skip unless `TEST_POSTGRES_URL` is set, because SQLite would report success
 for code that is not actually safe.
 
+## Backups
+
+Nothing here backs itself up. What to back up depends on `DB_URL`:
+
+```bash
+# Postgres
+pg_dump "$DB_URL" > secretmgr-$(date +%F).sql
+
+# SQLite, from the running container's volume
+docker run --rm -v secretmgr-data:/data alpine \
+  sh -c 'apk add -q sqlite && sqlite3 /data/secrets.db ".backup /data/backup.db"' 
+```
+
+Use SQLite's `.backup` rather than copying the file: a copy taken while the
+service is writing can be torn.
+
+**Back up `SECRET_ENCRYPTION_KEY` separately, somewhere you can still reach if
+the deployment is gone.** A database backup without the key is unreadable, and
+there is no recovery path.
+
 ## Upgrading
 
 Pull the new image and restart. Tables are created on startup and existing rows
@@ -211,8 +231,11 @@ are left alone; values written before `SECRET_ENCRYPTION_KEY` was configured
 stay readable, because ciphertext is tagged and untagged rows are treated as
 plaintext.
 
-Keep the encryption key. **Losing or changing it makes every encrypted value
-unreadable, with no recovery path.**
+Schema changes are applied on startup and recorded, so an upgrade never means
+recreating the database.
+
+To change the encryption key, follow the two-step rotation in `SECURITY.md`.
+**Swapping it in one step makes every encrypted value unreadable.**
 
 ## Pointing the CLI at your deployment
 
