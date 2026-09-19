@@ -57,9 +57,8 @@ Then, depending on what you are doing:
 | More than one replica | `DB_URL` pointing at Postgres, and a fixed `BOOTSTRAP_TOKEN` |
 | A specific listen port | `PORT` — honoured automatically on Cloud Run and similar |
 
-For the CLI: one binary, no runtime. Set `BACKEND_URL` to your own server —
-without it the CLI talks to the project's demo deployment, which is not where
-you want your secrets.
+For the CLI: one binary, no runtime, and `BACKEND_URL` pointing at your own
+server. It has no default and refuses to run without one.
 
 ## Production checklist
 
@@ -193,11 +192,12 @@ Swap the filename for `secretmgr-macos-x86_64`, `secretmgr-linux-x86_64`,
 `secretmgr-linux-arm64` or `secretmgr-windows-x86_64.exe`. On macOS the binaries are unsigned, so clear the
 quarantine flag once: `xattr -d com.apple.quarantine /usr/local/bin/secretmgr`.
 
-Point it at your deployment and log in:
+Point it at your deployment. **`BACKEND_URL` is required** — there is no
+default, so the CLI can never send your secrets somewhere you did not choose:
 
 ```bash
 export BACKEND_URL=https://secrets.example.com
-secretmgr login
+secretmgr register alice
 ```
 
 ### Commands
