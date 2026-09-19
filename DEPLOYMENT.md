@@ -176,12 +176,6 @@ else that chooses the port for you works without a custom command. `HOST`,
 server reads `X-Forwarded-*` so it sees the client's address rather than the
 proxy's.
 
-### AWS with Terraform
-
-[`terraform/`](terraform/) holds the original AWS deployment (ECS Fargate, ECR,
-a network load balancer, and CloudFront for TLS). It is one option among the
-above, not the supported path — the container runs anywhere, and most platforms
-need far less setup.
 
 ## Running more than one replica
 
