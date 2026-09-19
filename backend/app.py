@@ -4,11 +4,11 @@ load_environment()
 
 import crypto
 import settings
-from database import init_db
+from database import init_db, session_scope
 from version import VERSION
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from auth import router as auth_router
 from secret_manager import router as secrets_router
 
@@ -70,6 +70,40 @@ async def limit_request_size(request, call_next):
         except ValueError:
             return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
     return await call_next(request)
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus text format, hand-rolled.
+
+    Deliberately no client library: four counts do not justify a dependency in
+    an image whose point is being small. Off unless ENABLE_METRICS is set,
+    because the counts are not something every deployment wants on an
+    unauthenticated endpoint.
+    """
+    if not settings.metrics_enabled():
+        raise HTTPException(404, "Not Found")
+
+    import audit_models
+    from auth.models import ApiToken, User
+    from secret_manager.models import Secret, Share
+
+    with session_scope() as db:
+        counts = {
+            "secretmgr_users_total": db.query(User).count(),
+            "secretmgr_secrets_total": db.query(Secret).count(),
+            "secretmgr_shares_total": db.query(Share).count(),
+            "secretmgr_tokens_total": db.query(ApiToken).count(),
+            "secretmgr_audit_events_total": db.query(audit_models.AuditEvent).count(),
+        }
+
+    lines = []
+    for name, value in counts.items():
+        lines.append(f"# TYPE {name} gauge")
+        lines.append(f"{name} {value}")
+    lines.append("# TYPE secretmgr_build_info gauge")
+    lines.append(f'secretmgr_build_info{{version="{VERSION}"}} 1')
+    return PlainTextResponse("\n".join(lines) + "\n")
 
 
 @app.get("/healthz")

@@ -34,3 +34,10 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
 
+    # create_all() only adds missing tables. Anything that changes an existing
+    # one goes through migrations, so an upgrade never means recreating the
+    # database.
+    from migrations import run_migrations
+
+    run_migrations()
+
