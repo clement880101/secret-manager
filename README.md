@@ -213,6 +213,7 @@ secretmgr register alice
 | `secretmgr whoami` | Show who you are and how this deployment authenticates. |
 | `secretmgr logout` | Remove the stored token. |
 | `secretmgr create KEY VALUE` | Store a secret you own. |
+| `secretmgr update KEY VALUE` | Replace a value, keeping who it is shared with. |
 | `secretmgr list` | The keys you can see. Values are not included. |
 | `secretmgr get KEY` | Print one secret's value. |
 | `secretmgr audit` | Recent activity on your account. |
@@ -222,6 +223,10 @@ secretmgr register alice
 | `secretmgr version` | Print the CLI version. |
 
 `share` takes the username the recipient registered with.
+
+Rotate a value with `update`, not by deleting and recreating: deleting a
+secret also removes every share attached to it, so recreating it leaves your
+teammates without access and says nothing about it.
 
 ## How it works
 

@@ -176,3 +176,48 @@ def test_list_does_not_even_read_the_values(service_modules):
         "listing read the secret values it exists to withhold:\n"
         + "\n".join(s for s in selects if "secrets.value" in s)
     )
+
+
+def test_update_keeps_the_secret_shared(service_modules):
+    """Rotating a value must not revoke everyone's access to it.
+
+    There was no way to change a value: you deleted the secret and created it
+    again. Deleting cascades to the shares, so the only available way to
+    rotate a credential silently cut off every teammate it was shared with,
+    and nothing said so.
+    """
+    service = service_modules["service"]
+
+    service.put_secret("alice", "db-pw", "v1")
+    service.put_secret("bob", "unrelated", "x")  # also creates bob
+    service.share_secret("alice", "db-pw", "bob")
+    assert service.get_secret_for_user("bob", "db-pw")["value"] == "v1"
+
+    service.update_secret("alice", "db-pw", "v2")
+
+    assert service.get_secret_for_user("alice", "db-pw")["value"] == "v2"
+    assert service.get_secret_for_user("bob", "db-pw")["value"] == "v2", (
+        "the share did not survive the update"
+    )
+
+
+def test_update_of_a_missing_secret_raises(service_modules):
+    service = service_modules["service"]
+    service.put_secret("alice", "other", "v")
+
+    with pytest.raises(LookupError):
+        service.update_secret("alice", "no-such-key", "v2")
+
+
+def test_update_will_not_touch_someone_elses_secret(service_modules):
+    service = service_modules["service"]
+
+    service.put_secret("alice", "db-pw", "v1")
+    service.put_secret("bob", "unrelated", "x")
+    service.share_secret("alice", "db-pw", "bob")
+
+    # bob can read it, but reading is not writing.
+    with pytest.raises(LookupError):
+        service.update_secret("bob", "db-pw", "hijacked")
+
+    assert service.get_secret_for_user("alice", "db-pw")["value"] == "v1"
