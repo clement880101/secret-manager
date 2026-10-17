@@ -3,13 +3,150 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Secret Manager</title>
+<title>Secret Manager — self-hosted secrets in one container</title>
 <meta name="google-site-verification" content="j07u6Cb6tYxqLmcuOS92N2Lo7XMwJvGOvt4ot2_LiZM" />
-<meta name="description" content="A lightweight, distributed secret manager you run in your own cloud. It brings its own database and its own accounts. No identity provider, no outbound network access.">
-<meta property="og:title" content="Secret Manager">
-<meta property="og:description" content="A lightweight, distributed secret manager. One binary under 10MB, one container, any database.">
+<meta name="description" content="A lightweight, self-hosted secret manager. One container that brings its own database and accounts — no identity provider, no outbound network access.">
+<meta name="author" content="Clement Chang">
+<meta property="og:title" content="Secret Manager — self-hosted secrets in one container">
+<meta property="og:description" content="Store a secret, share it with a teammate, read it back from any machine. One container, its own database and accounts. Open source, Apache 2.0.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://clement880101.github.io/secret-manager/">
+<meta property="og:site_name" content="Secret Manager">
+<meta property="og:image" content="https://clement880101.github.io/secret-manager/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Secret Manager — a lightweight, distributed secret manager. docker run ghcr.io/clement880101/secret-manager">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Secret Manager — self-hosted secrets in one container">
+<meta name="twitter:description" content="Store a secret, share it with a teammate, read it back from any machine. One container, its own database and accounts.">
+<meta name="twitter:image" content="https://clement880101.github.io/secret-manager/og.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2218%22 fill=%22%2308090b%22/><rect x=%2222%22 y=%2246%22 width=%2256%22 height=%2216%22 fill=%22%23ffb000%22/></svg>">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://clement880101.github.io/secret-manager/#app",
+      "name": "Secret Manager",
+      "description": "A lightweight, self-hosted secret manager. Store a secret, share it with a teammate, and read it back from any machine. Runs as one container with its own database and its own accounts, with no identity provider and no outbound network access.",
+      "url": "https://clement880101.github.io/secret-manager/",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Secrets management",
+      "operatingSystem": "Linux, macOS, Windows, Docker",
+      "softwareVersion": "0.7.5",
+      "downloadUrl": "https://github.com/clement880101/secret-manager/releases/latest",
+      "installUrl": "https://github.com/clement880101/secret-manager#readme",
+      "softwareHelp": "https://github.com/clement880101/secret-manager/blob/main/DEPLOYMENT.md",
+      "license": "https://www.apache.org/licenses/LICENSE-2.0",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Clement Chang",
+        "url": "https://clement880101.github.io/personal-web/"
+      },
+      "featureList": [
+        "Self-hosted: runs on any container runtime",
+        "Bundled database, with Postgres for multiple replicas",
+        "Its own accounts and tokens, with no identity provider",
+        "Secret values encrypted at rest with Fernet",
+        "Per-key sharing between accounts",
+        "Per-account audit trail",
+        "Single CLI binary under 10 MB, no runtime to install"
+      ]
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://clement880101.github.io/secret-manager/#source",
+      "name": "secret-manager",
+      "codeRepository": "https://github.com/clement880101/secret-manager",
+      "programmingLanguage": [
+        "Python"
+      ],
+      "runtimePlatform": "Docker",
+      "license": "https://www.apache.org/licenses/LICENSE-2.0",
+      "about": {
+        "@id": "https://clement880101.github.io/secret-manager/#app"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://clement880101.github.io/secret-manager/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do I need a GitHub account, or any identity provider?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. The service has its own accounts and issues its own tokens. Nothing is registered anywhere else, and it makes no outbound network calls."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it need a separate database?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Not to start. The container bundles SQLite and a volume is the whole setup. Point DB_URL at Postgres when you want more than one replica, because SQLite cannot back concurrent writers."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can it run more than one replica behind a load balancer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Replicas hold no state in process memory, so no session affinity is needed. Give them one Postgres and a shared BOOTSTRAP_TOKEN, then scale to any number."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How are secrets stored?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Encrypted at rest with Fernet (AES-128-CBC and HMAC-SHA256) under the key in SECRET_ENCRYPTION_KEY. Without that variable values are stored in plaintext, so set it before storing anything real."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I rotate the encryption key?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Put the old key in SECRET_ENCRYPTION_KEYS_RETIRED and the new one in SECRET_ENCRYPTION_KEY, then run rotate_keys. It re-encrypts everything and reports how many secrets are still on the old key; only drop the retired key once that reaches zero."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What does it cost?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Nothing. It is open source under Apache 2.0, and it runs on your own infrastructure, so there is no account, quota or vendor involved."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How is this different from Vault or AWS Secrets Manager?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "It is deliberately much smaller. There is no identity provider to wire up, no policy language, no cloud account and no agent \u2014 a container and a CLI binary under 10 MB. That is the trade: far less to run and far less to learn, and far fewer features."
+          }
+        }
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://clement880101.github.io/secret-manager/#website",
+      "url": "https://clement880101.github.io/secret-manager/",
+      "name": "Secret Manager",
+      "description": "Documentation and downloads for Secret Manager, a lightweight self-hosted secret manager.",
+      "inLanguage": "en"
+    }
+  ]
+}
+</script>
 <link rel="canonical" href="https://clement880101.github.io/secret-manager/">
 <link rel="sitemap" type="application/xml" href="sitemap.xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -227,6 +364,15 @@
   .status li{color:#c6c0b4;font-size:15.5px}
   .status strong{color:var(--paper);font-weight:500}
 
+  .faq{display:grid;gap:0}
+  .faq details{border-top:1px solid var(--line);padding:18px 0}
+  .faq details:last-child{border-bottom:1px solid var(--line)}
+  .faq summary{cursor:pointer;list-style:none;font-size:17px;color:var(--paper);display:flex;gap:14px;align-items:baseline}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary::before{content:"+";font-family:var(--mono);color:var(--amber);font-size:14px}
+  .faq details[open] summary::before{content:"\2212"}
+  .faq p{margin:12px 0 0 28px;font-size:15.5px;color:#c6c0b4;max-width:62ch}
+
   footer{border-top:1px solid var(--line);padding-block:40px;color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.05em}
   .foot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
   footer a{color:var(--muted);text-decoration:none}
@@ -257,7 +403,7 @@
 <main id="top">
 
   <div class="wrap hero hero-fade">
-    <p class="eyebrow">Lightweight &amp; distributed <span>/ self-hosted / v0.7.3</span></p>
+    <p class="eyebrow">Lightweight &amp; distributed <span>/ self-hosted / v0.7.5</span></p>
     <h1>A lightweight, distributed <span class="redact">secret</span> manager.</h1>
     <p class="lede">Run it in your own cloud &mdash; AWS, GCP, a VPS, Kubernetes, anywhere that runs a container. It brings its own database and its own accounts, so there is no identity provider to wire up and nothing to reach out to.</p>
     <div class="pull">
@@ -474,6 +620,7 @@ docker compose up -d</code>
         <tr><td>secretmgr whoami</td><td>Show who you are and how the deployment authenticates.</td></tr>
         <tr><td>secretmgr logout</td><td>Remove the stored token from this machine.</td></tr>
         <tr><td>secretmgr create KEY VALUE</td><td>Store a new secret you own.</td></tr>
+        <tr><td>secretmgr update KEY VALUE</td><td>Replace a value, keeping who it is shared with. Deleting and recreating would drop the shares.</td></tr>
         <tr><td>secretmgr list</td><td>List everything visible to you — what you own, plus what others have shared with you.</td></tr>
         <tr><td>secretmgr share KEY USER</td><td>Give a teammate read access. They must already have an account.</td></tr>
         <tr><td>secretmgr delete KEY</td><td>Delete a secret you own.</td></tr>
@@ -505,11 +652,51 @@ docker compose up -d</code>
     </div>
   </section>
 
+  <!-- ===== faq ===== -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">07</span>
+        <h2>Questions</h2>
+      </div>
+      <div class="faq">
+        <details>
+          <summary>Do I need a GitHub account, or any identity provider?</summary>
+          <p>No. The service has its own accounts and issues its own tokens. Nothing is registered anywhere else, and it makes no outbound network calls.</p>
+        </details>
+        <details>
+          <summary>Does it need a separate database?</summary>
+          <p>Not to start. The container bundles SQLite and a volume is the whole setup. Point DB_URL at Postgres when you want more than one replica, because SQLite cannot back concurrent writers.</p>
+        </details>
+        <details>
+          <summary>Can it run more than one replica behind a load balancer?</summary>
+          <p>Yes. Replicas hold no state in process memory, so no session affinity is needed. Give them one Postgres and a shared BOOTSTRAP_TOKEN, then scale to any number.</p>
+        </details>
+        <details>
+          <summary>How are secrets stored?</summary>
+          <p>Encrypted at rest with Fernet (AES-128-CBC and HMAC-SHA256) under the key in SECRET_ENCRYPTION_KEY. Without that variable values are stored in plaintext, so set it before storing anything real.</p>
+        </details>
+        <details>
+          <summary>How do I rotate the encryption key?</summary>
+          <p>Put the old key in SECRET_ENCRYPTION_KEYS_RETIRED and the new one in SECRET_ENCRYPTION_KEY, then run rotate_keys. It re-encrypts everything and reports how many secrets are still on the old key; only drop the retired key once that reaches zero.</p>
+        </details>
+        <details>
+          <summary>What does it cost?</summary>
+          <p>Nothing. It is open source under Apache 2.0, and it runs on your own infrastructure, so there is no account, quota or vendor involved.</p>
+        </details>
+        <details>
+          <summary>How is this different from Vault or AWS Secrets Manager?</summary>
+          <p>It is deliberately much smaller. There is no identity provider to wire up, no policy language, no cloud account and no agent — a container and a CLI binary under 10 MB. That is the trade: far less to run and far less to learn, and far fewer features.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <footer>
   <div class="wrap foot">
-    <span>Secret Manager — v0.7.3</span>
+    <span>Secret Manager — v0.7.5</span>
     <span><a href="https://github.com/clement880101/secret-manager/blob/main/LICENSE">Apache&nbsp;2.0</a></span>
     <span><a href="https://github.com/clement880101/secret-manager">github.com/clement880101/secret-manager</a></span>
     <span><a href="https://clement880101.github.io/personal-web/">clement880101</a></span>

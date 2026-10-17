@@ -1,0 +1,40 @@
+# Secret Manager
+
+> A lightweight, self-hosted secret manager. Store a secret, share it with a
+> teammate, and read it back from any machine. It runs as one container that
+> brings its own database and its own accounts: no identity provider, no
+> outbound network access, no third party involved.
+
+Open source under Apache 2.0. Current release: v0.7.5.
+
+Run it:
+
+    docker run -d -p 8000:8000 -v secretmgr-data:/data \
+      ghcr.io/clement880101/secret-manager:latest
+
+The CLI is a single binary under 10 MB with no runtime to install, published
+for Linux, macOS and Windows on the releases page.
+
+## What it is
+
+- Self-hosted. Anywhere a container runs: a VPS, AWS, GCP, Azure, Kubernetes, a laptop.
+- Bundles SQLite so a single container needs nothing else. Point `DB_URL` at Postgres to run multiple replicas.
+- Its own accounts and tokens. Nothing is registered with any other service.
+- Secret values are encrypted at rest with Fernet (AES-128-CBC + HMAC-SHA256) under `SECRET_ENCRYPTION_KEY`.
+- Secrets are shared per key between accounts, and reads are recorded in a per-account audit trail.
+- Replicas hold no state in process memory, so scaling needs no session affinity.
+
+## What it is not
+
+It is deliberately smaller than Vault or a cloud secrets service: no policy
+language, no identity provider integration, no agent, no dynamic credentials.
+The trade is far less to run and far less to learn, for far fewer features.
+
+## Links
+
+- [Website](https://clement880101.github.io/secret-manager/)
+- [Source](https://github.com/clement880101/secret-manager)
+- [README](https://github.com/clement880101/secret-manager/blob/main/README.md)
+- [Deployment guide](https://github.com/clement880101/secret-manager/blob/main/DEPLOYMENT.md)
+- [Security notes](https://github.com/clement880101/secret-manager/blob/main/SECURITY.md)
+- [Releases](https://github.com/clement880101/secret-manager/releases/latest)
